@@ -1,0 +1,15 @@
+{
+  "name": "emberwake",
+  "version": "1.0.0",
+  "description": "Emberwake — a living-world skyship trading sim for the browser.",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node test/sim.test.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "UNLICENSED",
+  "private": true
+}

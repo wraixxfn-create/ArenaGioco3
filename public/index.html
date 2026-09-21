@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="description" content="Emberwake — a living-world skyship trading sim. One ship, five factions, a real economy.">
+<title>EMBERWAKE — Skyship Ledger of the Shattered Reach</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔥</text></svg>">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="app">
+  <header id="topbar">
+    <div class="tb-brand">EMBERWAKE<span class="tb-era" id="tb-era"></span></div>
+    <div class="tb-stats">
+      <div class="tb-stat" id="tb-worth" data-tip="Net worth — gilds + cargo value + ship investments. Found a dynasty at 200,000."><span class="lbl">worth</span><span class="val" id="tb-worth-v">—</span></div>
+      <div class="tb-stat" id="tb-credits" data-tip="Gilds — your spending money."><span class="lbl">gilds</span><span class="val" id="tb-credits-v">—</span></div>
+      <div class="tb-stat" id="tb-cargo" data-tip="Cargo space used. Upgrade holds at shipyards."><span class="lbl">cargo</span><span class="val" id="tb-cargo-v">—</span></div>
+      <div class="tb-stat" id="tb-fuel" data-tip="Ember fuel. Every leg burns embers; buy more at any market with a depot."><span class="lbl">fuel</span><span class="val" id="tb-fuel-v">—</span></div>
+      <div class="tb-stat" id="tb-hull" data-tip="Hull integrity. At zero, salvage tugs take their fee."><span class="lbl">hull</span><span class="val" id="tb-hull-v">—</span></div>
+    </div>
+    <div class="tb-time">
+      <div id="tb-day">Day 1 <span id="tb-saved">✓ saved</span></div>
+      <div id="tb-loc">—</div>
+    </div>
+    <div class="tb-speed" id="tb-speed" data-tip="Time flows at your command. Spacebar pauses.">
+      <button data-speed="0" title="Pause (Space)">⏸</button>
+      <button data-speed="1" class="on" title="Normal time">1×</button>
+      <button data-speed="2" title="Double time">2×</button>
+      <button data-speed="4" title="Quadruple time">4×</button>
+    </div>
+  </header>
+
+  <main id="layout">
+    <div id="map-wrap">
+      <canvas id="map"></canvas>
+      <div id="zoom-ctl">
+        <button id="zoom-in" title="Zoom in">+</button>
+        <button id="zoom-out" title="Zoom out">−</button>
+        <button id="zoom-fit" title="Fit the Reach">⌂</button>
+      </div>
+      <div id="mooring-card" class="hidden"></div>
+      <div id="milestone-widget" class="hidden"></div>
+      <div id="ticker" class="hidden"></div>
+    </div>
+    <aside id="panel">
+      <nav id="tabs">
+        <button data-tab="market" class="on">Market</button>
+        <button data-tab="ship">Ship</button>
+        <button data-tab="contracts">Contracts</button>
+        <button data-tab="factions">Factions</button>
+        <button data-tab="codex">Codex</button>
+        <button data-tab="log">Log</button>
+      </nav>
+      <div id="panel-body">
+        <section id="p-market" class="panel"></section>
+        <section id="p-ship" class="panel hidden"></section>
+        <section id="p-contracts" class="panel hidden"></section>
+        <section id="p-factions" class="panel hidden"></section>
+        <section id="p-codex" class="panel hidden"></section>
+        <section id="p-log" class="panel hidden"></section>
+      </div>
+    </aside>
+  </main>
+</div>
+
+<div id="toast-root" aria-live="polite"></div>
+<div id="modal-root"></div>
+<div id="tooltip" class="hidden"></div>
+<div id="intro" class="hidden"></div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
