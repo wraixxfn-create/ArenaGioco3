@@ -201,6 +201,10 @@ audio, responsive UI, prestige.
   Tidebound Choir processions cross your lane (donate for fuel + reputation).
 - **QoL:** market filter chips (All / In hold / Scarce); codex ledger tracks
   contraband fenced and dividends; 4 new achievements.
+- **Politics retune:** any strained pair (rel < −25) now provokes — not just
+  historically hostile ones — and rare sabotage "sparks" plunge tense pairs, so
+  wars ignite on every seed (12/12 measured, avg first war ≈ day 10). War
+  threshold eased −55 → −50.
 
 ## 15. Roadmap ahead
 

@@ -267,18 +267,37 @@ function politicsStep(state) {
     const base = REL_BASES[k] ?? 5;
     state.relations[k] = clamp(v + clamp(base - v, -2, 2) * 0.15 + (rng() * 3 - 1.5), -100, 100);
   }
-  // Provocations: hostile pairs trade insults and seized cargo, sliding toward war.
+  // Provocations: once a pair is strained (rel < −25), incidents escalate them —
+  // pairs with historically hostile bases provoke more often. Without this the
+  // drift-toward-base would forever rescue neutral pairs and wars would be rare.
   for (const [k, v] of Object.entries(state.relations)) {
     const base = REL_BASES[k] ?? 5;
-    if (base < -20 && v < -25 && rngChance(rng, 0.12)) {
+    if (v < -25 && !state.wars.some((w) => k === [w.a, w.b].join('|'))) {
+      const p = base < -20 ? 0.16 : v < -40 ? 0.14 : 0.10;
+      if (rngChance(rng, p)) {
+        const [a, b] = k.split('|');
+        state.relations[k] = clamp(v - rngInt(rng, 4, 9), -100, 100);
+        addLog(state, 'politics', `🗯️ Incident: ${FACTION_MAP[a].short} and ${FACTION_MAP[b].short} trade accusations over a seized caravan.`);
+      }
+    }
+  }
+  // Sparks: on rare hours something big happens — sabotage, a downed courier —
+  // and one tense pair plunges. This keeps world history moving even in seeds
+  // where drift noise alone would never push a pair past the provocation line.
+  if (rngChance(rng, 0.006)) {
+    const tense = Object.entries(state.relations).filter(
+      ([k, v]) => v < 0 && !state.wars.some((w) => k === [w.a, w.b].join('|')),
+    );
+    if (tense.length) {
+      const [k, v] = tense[rngInt(rng, 0, tense.length - 1)];
       const [a, b] = k.split('|');
-      state.relations[k] = clamp(v - rngInt(rng, 4, 9), -100, 100);
-      addLog(state, 'politics', `🗯️ Incident: ${FACTION_MAP[a].short} and ${FACTION_MAP[b].short} trade accusations over a seized caravan.`);
+      state.relations[k] = clamp(v - rngInt(rng, 10, 16), -100, 100);
+      addLog(state, 'politics', `🔥 ${FACTION_MAP[a].short} blames ${FACTION_MAP[b].short} for sabotage in the contested lanes.`);
     }
   }
   for (const [k, v] of Object.entries(state.relations)) {
     const [a, b] = k.split('|');
-    if (v < -55 && !state.wars.some((w) => (w.a === a && w.b === b) || (w.a === b && w.b === a))) {
+    if (v < -50 && !state.wars.some((w) => (w.a === a && w.b === b) || (w.a === b && w.b === a))) {
       const fa = state.factions.find((f) => f.id === a), fb = state.factions.find((f) => f.id === b);
       if (fa.treasury > 3000 && fb.treasury > 3000 && rngChance(rng, 0.25 + (fa.aggression + fb.aggression) * 0.2)) {
         state.wars.push({ a, b, since: state.t });
