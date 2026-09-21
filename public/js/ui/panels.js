@@ -4,7 +4,7 @@
 import { esc, fmtMoney, fmtInt, fmtDate, seasonOf, dayOf } from '../core/util.js';
 import { GOODS } from '../data/goods.js';
 import { FACTIONS, FACTION_MAP, repTier, relKey } from '../data/factions.js';
-import { ARTIFACTS } from '../data/lore.js';
+import { ARTIFACTS, WORLD_LORE } from '../data/lore.js';
 import { mooringById } from '../world/gen.js';
 import {
   priceOf, buyPrice, sellPrice, spreadFor, capacityOf, tankCapOf, maxHullOf,
@@ -85,13 +85,13 @@ function onPanelClick(e) {
     case 'qty': qtyMode = el.dataset.q === 'max' ? 'max' : Number(el.dataset.q); renderPanel(state); break;
     case 'buy': {
       const q = qtyMode === 'max' ? capacityOf(state) : qtyMode;
-      wrap(buyGood(state, el.dataset.good, q), () => sfx.buy());
+      wrap(buyGood(state, el.dataset.good, q), () => { sfx.buy(); flashRow(el.dataset.good, 'bad'); });
       break;
     }
     case 'sell': {
       const have = state.player.cargo[el.dataset.good] || 0;
       const q = qtyMode === 'max' ? have : Math.min(qtyMode, have);
-      wrap(sellGood(state, el.dataset.good, q), () => sfx.sell());
+      wrap(sellGood(state, el.dataset.good, q), () => { sfx.sell(); flashRow(el.dataset.good, 'good'); });
       break;
     }
     case 'refuel': {
@@ -295,6 +295,14 @@ function updateTabBadges(state) {
   }
 }
 
+function flashRow(good, kind) {
+  const row = document.querySelector(`#p-market [data-row="${good}"]`);
+  if (!row) return;
+  row.classList.remove('flash-good', 'flash-bad');
+  void row.offsetWidth; // restart animation
+  row.classList.add(kind === 'good' ? 'flash-good' : 'flash-bad');
+}
+
 function spark(arr) {
   if (!arr || arr.length < 8) return '';
   const w = 58, h = 16;
@@ -338,7 +346,7 @@ function renderMarket(state) {
     const have = p.cargo[g] || 0;
     const locked = GOODS[g].restricted && !p.licenses[m.faction];
     const produces = (m.prod[g] || 0) > 0, consumes = (m.cons[g] || 0) > 0;
-    return `<div class="mk-row" data-tip="${esc(GOODS[g].blurb)}">
+    return `<div class="mk-row" data-row="${g}" data-tip="${esc(GOODS[g].blurb)}">
       <div class="gicon">${GOODS[g].icon}</div>
       <div>
         <div class="gname">${GOODS[g].name}${locked ? ' <span class="dim" title="restricted">🔒</span>' : ''}</div>
@@ -751,13 +759,24 @@ function renderCodex(state) {
     <h2 class="sec">Ledger of deeds</h2>
     <div class="stats-grid">${statsHtml}</div>
 
+    <h2 class="sec">Fragments of history</h2>
+    <div class="card">
+      ${WORLD_LORE.map((l, i) => {
+        const need = [3, 8, 15][i];
+        const unlocked = s.visited.length >= need;
+        return `<div class="sub" style="margin-bottom:8px;${unlocked ? '' : 'opacity:.45;font-style:italic'}" ${unlocked ? '' : `data-tip="Chart ${need} moorings to recover this fragment."`}>
+          ${unlocked ? esc(l) : `Fragment lost — chart ${need} moorings (${Math.min(s.visited.length, need)}/${need}).`}
+        </div>`;
+      }).join('')}
+    </div>
+
     <h2 class="sec">Settings</h2>
     <div class="card">
       <div class="set-row"><span>Sound effects</span><input type="checkbox" data-set="audio" ${state.settings.audio ? 'checked' : ''}></div>
       <div class="set-row"><span>Ambient drone</span><input type="checkbox" data-set="ambient" ${state.settings.ambient ? 'checked' : ''}></div>
       <div class="set-row"><span>Vex's advice</span><input type="checkbox" data-set="hints" ${state.settings.hints ? 'checked' : ''}></div>
       <div class="set-row"><span>Volume</span><input type="range" id="set-vol" min="0" max="1" step="0.05" value="${state.settings.vol}"></div>
-      <div class="set-row"><span>World seed</span><span class="dim mono">${esc(state.meta.seed)}</span></div>
+      <div class="set-row"><span>World seed</span><span class="dim mono">${esc(state.meta.seed)}${state.meta.seed.startsWith('daily-') ? ' <span class="chip teal" title="Everyone playing on this date shares the same world.">🌅 Today\u2019s Reach</span>' : ''}</span></div>
       <div class="set-row"><span>Abandon this voyage</span><button class="btn sm danger" data-act="newworld">New world…</button></div>
     </div>`;
 }

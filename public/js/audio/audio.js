@@ -25,7 +25,7 @@ function ensure() {
 export function initAudio() {
   if (!ensure()) return;
   if (ctx.state === 'suspended') ctx.resume();
-  if (ambientOn) startAmbient();
+  if (ambientOn) { startAmbient(); startMusic(); }
 }
 
 function blip({ freq = 440, dur = 0.08, type = 'sine', gain = 0.2, slide = 0, delay = 0 }) {
@@ -93,13 +93,58 @@ export function stopAmbient() {
   ambientNodes = null;
 }
 
+// --- Procedural music: a slow chord pad that evolves under the world ---------
+// Four chords on a 14-second breath. No assets, no loops — pure synthesis.
+
+const CHORDS = [
+  [110.0, 164.81, 220.0, 329.63],
+  [98.0, 146.83, 196.0, 293.66],
+  [87.31, 130.81, 174.61, 261.63],
+  [110.0, 146.83, 220.0, 277.18],
+];
+let musicTimer = null;
+let chordIdx = 0;
+
+function playChord(freqs) {
+  if (!ctx || ctx.state !== 'running') return;
+  const t0 = ctx.currentTime;
+  freqs.forEach((f, i) => {
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.type = 'sine';
+    o.frequency.value = f * (i === 3 ? 1.003 : 1); // gentle shimmer on the top note
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.linearRampToValueAtTime(0.015, t0 + 5);
+    g.gain.linearRampToValueAtTime(0.0001, t0 + 13);
+    o.connect(g); g.connect(master);
+    o.start(t0); o.stop(t0 + 13.2);
+  });
+}
+
+function scheduleMusic() {
+  if (!enabled || !ambientOn || !ctx) { musicTimer = null; return; }
+  playChord(CHORDS[chordIdx % CHORDS.length]);
+  chordIdx++;
+  musicTimer = setTimeout(scheduleMusic, 14000);
+}
+
+export function startMusic() {
+  if (!ensure() || musicTimer) return;
+  scheduleMusic();
+}
+
+export function stopMusic() {
+  if (musicTimer) clearTimeout(musicTimer);
+  musicTimer = null;
+}
+
 export function configureAudio({ enabled: e, ambient, vol }) {
   if (e !== undefined) enabled = e;
   if (vol !== undefined) { volume = vol; if (master) master.gain.value = volume * 0.5; }
   if (ambient !== undefined) {
     ambientOn = ambient;
-    if (ambientOn && ctx) startAmbient();
-    if (!ambientOn) stopAmbient();
+    if (ambientOn && ctx) { startAmbient(); startMusic(); }
+    if (!ambientOn) { stopAmbient(); stopMusic(); }
   }
-  if (!enabled) stopAmbient();
+  if (!enabled) { stopAmbient(); stopMusic(); }
 }

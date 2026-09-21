@@ -22,6 +22,19 @@ export function vexSay(text) {
   toast(`<span class="who">Quartermaster Vex</span>${esc(text)}`, 'vex', 6500);
 }
 
+// --- Floating numbers (profit/loss feedback near the HUD) ---------------------
+
+export function floatNumber(text, kind = 'good') {
+  const anchor = document.getElementById('tb-credits');
+  if (!anchor) return;
+  const el = document.createElement('span');
+  el.className = `float-num ${kind}`;
+  el.textContent = text;
+  anchor.style.position = 'relative';
+  anchor.appendChild(el);
+  setTimeout(() => el.remove(), 1300);
+}
+
 // --- Modal -------------------------------------------------------------------
 
 let modalEl = null;
@@ -129,12 +142,13 @@ const INTRO_SLIDES = [
    <b>reputation</b> (it unlocks licenses, contracts and prices), and the <b>lane conditions</b>
    (storms and wars make routes dangerous — and profitable).</p>`,
   `<p><b>Controls:</b> click moorings to travel, use the tabs on the right for markets and ledgers,
-   and own time itself with ⏸/1×/2×/4× (spacebar pauses).</p>
+   and own time itself with ⏸/1×/2×/4× (spacebar pauses). Hotkeys: <b>M</b>arket, <b>V</b>essel,
+   <b>C</b>ontracts, <b>F</b>actions, codex (<b>X</b>), <b>L</b>og.</p>
    <p>The world keeps turning while you plan — contracts expire, wars start, harvests boom.
    Your ledger autosaves. The Reach will remember you.</p>`,
 ];
 
-export function showIntro(onDone) {
+export function showIntro(onDone, opts = {}) {
   const el = document.getElementById('intro');
   let idx = 0;
   el.classList.remove('hidden');
@@ -149,14 +163,16 @@ export function showIntro(onDone) {
           ${idx > 0 ? '<button class="btn" id="in-back">‹ Back</button>' : '<button class="btn" id="in-skip">Skip</button>'}
           ${idx < INTRO_SLIDES.length - 1
             ? '<button class="btn primary" id="in-next">Next ›</button>'
-            : '<button class="btn primary" id="in-start">⚓ Begin the First Tide</button>'}
+            : `<button class="btn primary" id="in-start">⚓ Begin the First Tide</button>
+               ${opts.dailySeed ? `<button class="btn" id="in-daily" title="Everyone playing today shares this exact world.">🌅 Today's Reach</button>` : ''}`}
         </div>
       </div>`;
     el.querySelector('#in-next')?.addEventListener('click', () => { sfx.click(); idx++; render(); });
     el.querySelector('#in-back')?.addEventListener('click', () => { sfx.click(); idx--; render(); });
-    el.querySelector('#in-skip')?.addEventListener('click', done);
-    el.querySelector('#in-start')?.addEventListener('click', done);
+    el.querySelector('#in-skip')?.addEventListener('click', () => done(null));
+    el.querySelector('#in-start')?.addEventListener('click', () => done(null));
+    el.querySelector('#in-daily')?.addEventListener('click', () => done(opts.dailySeed));
   };
-  const done = () => { sfx.dock(); el.classList.add('hidden'); onDone?.(); };
+  const done = (seed) => { sfx.dock(); el.classList.add('hidden'); onDone?.(seed); };
   render();
 }

@@ -327,6 +327,33 @@ input[type="text"] {
 #milestone-widget .mw-hint { font-size: 10.5px; color: var(--ink-faint); margin-top: 5px; cursor: pointer; }
 #milestone-widget .mw-hint:hover { color: var(--brass); }
 
+/* ---------- Ticker & floating numbers --------------------------------------------- */
+#ticker {
+  position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%);
+  max-width: 62%; z-index: 14; pointer-events: none;
+  background: var(--panel); border: 1px solid var(--line-soft); border-left: 3px solid var(--teal);
+  border-radius: 9px; padding: 7px 13px; font-size: 11.5px; color: var(--ink-dim);
+  box-shadow: var(--shadow); animation: slideUp 0.3s ease-out;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.float-num {
+  position: absolute; right: 4px; top: -6px; z-index: 50; pointer-events: none;
+  font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums;
+  animation: floatUp 1.25s ease-out forwards;
+}
+.float-num.good { color: var(--good); }
+.float-num.bad { color: var(--bad); }
+@keyframes floatUp {
+  0% { opacity: 0; transform: translateY(6px); }
+  15% { opacity: 1; }
+  100% { opacity: 0; transform: translateY(-22px); }
+}
+#tb-saved {
+  font-size: 10px; color: var(--teal); letter-spacing: 1px; margin-left: 6px;
+  opacity: 0; transition: opacity 0.3s;
+}
+#tb-saved.show { opacity: 1; }
+
 /* ---------- Toasts ------------------------------------------------------------ */
 #toast-root { position: fixed; top: 64px; right: 14px; z-index: 90; display: flex; flex-direction: column; gap: 8px; pointer-events: none; max-width: 340px; }
 .toast {

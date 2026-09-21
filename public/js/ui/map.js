@@ -10,9 +10,16 @@ let view = { x: WORLD_W / 2, y: WORLD_H / 2, scale: 1 };
 let W = 0, H = 0, dpr = 1;
 let embers = [];
 let trail = [];
+let pulses = []; // {mooringId, color, t0}
 let hover = null; // {kind:'mooring'|'anomaly', id}
 let dragging = false, dragMoved = 0, lastMouse = null;
 let dashPhase = 0;
+
+// Called from main on world events — rings a mooring on the map.
+export function addPulse(mooringId, color = '#ffd75e') {
+  pulses.push({ mooringId, color, t0: performance.now() });
+  if (pulses.length > 12) pulses.shift();
+}
 
 export function initMap(opts) {
   canvas = opts.canvas;
@@ -113,16 +120,26 @@ function bindInput() {
     view.y = wy - (my - H / 2) / view.scale;
   }, { passive: false });
 
-  // Touch: pan + tap.
+  // Touch: pan + tap + pinch zoom.
   let touchStart = null;
+  let pinch = null;
+  const touchDist = (e) => Math.hypot(
+    e.touches[0].clientX - e.touches[1].clientX,
+    e.touches[0].clientY - e.touches[1].clientY,
+  );
   canvas.addEventListener('touchstart', (e) => {
-    if (e.touches.length === 1) {
+    if (e.touches.length === 2) {
+      pinch = { d: touchDist(e), scale: view.scale };
+      touchStart = null;
+    } else if (e.touches.length === 1) {
       touchStart = { x: e.touches[0].clientX, y: e.touches[0].clientY, moved: 0 };
       lastMouse = { x: e.touches[0].clientX, y: e.touches[0].clientY };
     }
   }, { passive: true });
   canvas.addEventListener('touchmove', (e) => {
-    if (e.touches.length === 1 && lastMouse) {
+    if (pinch && e.touches.length === 2) {
+      view.scale = clampScale(pinch.scale * (touchDist(e) / pinch.d));
+    } else if (e.touches.length === 1 && lastMouse) {
       const dx = e.touches[0].clientX - lastMouse.x, dy = e.touches[0].clientY - lastMouse.y;
       touchStart && (touchStart.moved += Math.abs(dx) + Math.abs(dy));
       view.x -= dx / view.scale;
@@ -131,6 +148,7 @@ function bindInput() {
     }
   }, { passive: true });
   canvas.addEventListener('touchend', (e) => {
+    pinch = null;
     if (touchStart && touchStart.moved < 12) {
       const rect = canvas.getBoundingClientRect();
       const t = e.changedTouches[0];
@@ -227,6 +245,7 @@ function draw(now) {
   drawCaravans(state);
   drawAnomalies(state, now);
   drawMoorings(state, now);
+  drawPulses(state, now);
   drawPlayer(state, now);
 
   ctx.restore();
@@ -414,6 +433,23 @@ function drawMoorings(state, now) {
       ctx.fillStyle = known ? 'rgba(233,228,214,0.85)' : 'rgba(233,228,214,0.35)';
       ctx.fillText(known ? m.name : '?', m.x, m.y + r + 13);
     }
+  }
+}
+
+function drawPulses(state, now) {
+  pulses = pulses.filter((p) => now - p.t0 < 1800);
+  for (const p of pulses) {
+    const m = state.byId[p.mooringId];
+    if (!m) continue;
+    const age = (now - p.t0) / 1800;
+    const r = nodeRadius(m) + 6 + age * 34;
+    ctx.beginPath();
+    ctx.arc(m.x, m.y, r, 0, Math.PI * 2);
+    ctx.strokeStyle = p.color;
+    ctx.globalAlpha = (1 - age) * 0.75;
+    ctx.lineWidth = 2.2;
+    ctx.stroke();
+    ctx.globalAlpha = 1;
   }
 }
 

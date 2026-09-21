@@ -95,8 +95,12 @@ server-portable); **the UI never mutates state** (all verbs go through `player/a
 
 - **v1.1 ✅ shipped** — production shares (invest → dividends → reshape supply),
   crew officers with traits, rival captains leaderboard.
-- **v1.2** — async multiplayer on shared seeds: ghost captains (your price-influence
-  appears in friends' worlds), per-seed leaderboards, weekly Shroud events.
+- **v1.2 ✅ shipped** — the aliveness pass: floating numbers, map event pulses,
+  world ticker, **Today's Reach** (daily shared seed — everyone playing today gets the
+  same world), Shroud forecasts, procedural music, codex lore fragments, hotkeys,
+  pinch-zoom, autosave indicator.
+- **v1.3** — async layer on shared seeds: per-date leaderboards & ghost captains
+  (your influence appears in other players' Today's Reach), weekly Shroud events.
 - **v2.0** — dynasty heirs & succession crises, co-op convoy expeditions, warehouse
   ownership, faction HQ interiors.
 

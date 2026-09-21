@@ -1,7 +1,7 @@
 // EMBERWAKE — boot, main loop, and the glue between sim, UI, and audio.
 
 import { bus } from './core/bus.js';
-import { esc } from './core/util.js';
+import { esc, dailySeed } from './core/util.js';
 import { loadGame, saveGame } from './core/save.js';
 import { generateWorld, mooringById } from './world/gen.js';
 import { tickOnce, runOffline, TICK_MS } from './sim/sim.js';
@@ -11,17 +11,18 @@ import { resolveEncounterChoice, checkCatastrophe } from './player/actions.js';
 import { FACTION_MAP } from './data/factions.js';
 import { VEX_LINES } from './data/names.js';
 import { initAudio, configureAudio, sfx } from './audio/audio.js';
-import { initMap } from './ui/map.js';
+import { initMap, addPulse } from './ui/map.js';
 import {
   initPanels, renderAll, renderPanel, updateHUD, renderMooringCard,
   renderMilestoneWidget, selectMooring, setTab, getTab, syncSpeedUI,
 } from './ui/panels.js';
-import { bindTooltips, toast, vexSay, modal, showIntro, closeModal } from './ui/overlay.js';
+import { bindTooltips, toast, vexSay, modal, showIntro, closeModal, floatNumber } from './ui/overlay.js';
 
 let state = null;
 let encounterOpen = false;
 let ticks = 0;
 let lowFuelWarned = false;
+let lastTickerT = -1;
 
 // --- Boot ---------------------------------------------------------------------
 
@@ -77,11 +78,17 @@ function boot() {
   syncSpeedUI(state);
 
   if (!loaded) {
-    showIntro(() => {
+    showIntro((seed) => {
+      if (seed) {
+        state = generateWorld(seed);
+        refreshOffers(state);
+        toast(`🌅 <b>Today's Reach.</b> Every captain playing today sails this same sky.`, 'event', 7000);
+      }
       state.paused = false;
       if (state.settings.hints) vexSay(VEX_LINES.welcome);
+      saveGame(state);
       renderAll(state);
-    });
+    }, { dailySeed: dailySeed() });
   } else if (offlineSummary) {
     modal({
       icon: '🌫️',
@@ -95,10 +102,11 @@ function boot() {
     });
   }
 
-  // Autosave.
-  setInterval(() => saveGame(state), 12000);
+  // Autosave with a quiet "saved" blink.
+  const saveAndBlink = () => { if (saveGame(state)) flashSaved(); };
+  setInterval(saveAndBlink, 12000);
   window.addEventListener('beforeunload', () => saveGame(state));
-  document.addEventListener('visibilitychange', () => { if (document.hidden) saveGame(state); });
+  document.addEventListener('visibilitychange', () => { if (document.hidden) saveAndBlink(); });
 
   bindKeyboard();
   requestAnimationFrame(loop);
@@ -145,6 +153,7 @@ function doTick() {
   }
 
   updateHUD(state);
+  updateTicker();
   if (ticks % 4 === 0) {
     renderPanel(state);
     renderMooringCard(state);
@@ -168,6 +177,25 @@ function doTick() {
 
 function cargoEmpty(p) {
   return Object.values(p.cargo).reduce((a, b) => a + b, 0) + p.passengers.length === 0;
+}
+
+function flashSaved() {
+  const el = document.getElementById('tb-saved');
+  if (!el) return;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 1400);
+}
+
+// The Reach narrates itself along the bottom of the map.
+function updateTicker() {
+  const latest = state.log[0];
+  const el = document.getElementById('ticker');
+  if (!latest || !el || latest.t === lastTickerT) return;
+  lastTickerT = latest.t;
+  el.textContent = latest.text;
+  el.classList.remove('hidden');
+  clearTimeout(el._hideTimer);
+  el._hideTimer = setTimeout(() => el.classList.add('hidden'), 9000);
 }
 
 // --- Encounters -------------------------------------------------------------------
@@ -221,19 +249,24 @@ function wireBusEvents() {
   bus.on('trade', (e) => {
     if (e.dir === 'buy' && state.settings.hints && !state.player.flags.vexBuy) { state.player.flags.vexBuy = true; setTimeout(() => vexSay(VEX_LINES.firstBuy), 600); }
     if (e.dir === 'sell' && state.settings.hints && !state.player.flags.vexSell) { state.player.flags.vexSell = true; setTimeout(() => vexSay(VEX_LINES.firstSell), 600); }
+    if (e.dir === 'sell' && e.profit != null) floatNumber(`${e.profit >= 0 ? '+' : ''}${Math.round(e.profit)} g`, e.profit >= 0 ? 'good' : 'bad');
+    if (e.dir === 'buy' && e.cost != null) floatNumber(`−${Math.round(e.cost)} g`, 'bad');
     renderPanel(state);
   });
   bus.on('contract-accept', () => {
     if (state.settings.hints && !state.player.flags.vexContract) { state.player.flags.vexContract = true; vexSay(VEX_LINES.firstContract); }
     renderPanel(state);
   });
-  bus.on('contract-deliver', (c) => { toast(`📦 Delivered: +${c.reward} g, ${FACTION_MAP[c.repFaction].short} rep +${c.repReward}.`, 'good'); });
+  bus.on('contract-deliver', (c) => { floatNumber(`+${c.reward} g`, 'good'); toast(`📦 Delivered: +${c.reward} g, ${FACTION_MAP[c.repFaction].short} rep +${c.repReward}.`, 'good'); });
   bus.on('contract-warning', () => { sfx.alert(); toast('⏳ <b>Contract deadline:</b> 12 hours remain on a signed job.', 'bad', 6000); });
   bus.on('charted', ({ mooringId }) => { toast(`🗺️ <b>${esc(mooringById(state, mooringId).name)}</b> charted. +25 g bounty.`, 'good', 4500); });
   bus.on('crew-desert', (gone) => { toast(`💸 Wages ran dry — <b>${esc(gone.name)}</b> deserted the crew.`, 'bad', 6000); });
   bus.on('war', (w) => {
     sfx.war();
     toast(`⚔️ <b>War:</b> ${FACTION_MAP[w.a].name} vs ${FACTION_MAP[w.b].name}. Their lanes grow dangerous — and profitable.`, 'bad', 8000);
+    for (const m of state.moorings) {
+      if (m.faction === w.a || m.faction === w.b) addPulse(m.id, '#ff6b76');
+    }
     if (state.settings.hints && !state.player.flags.vexWar) { state.player.flags.vexWar = true; setTimeout(() => vexSay(VEX_LINES.warStart), 1200); }
     renderPanel(state);
   });
@@ -247,13 +280,18 @@ function wireBusEvents() {
     toast('🌫️ <b>Shroud tide!</b> Storm-walls have shifted. Check your routes before committing cargo.', 'event', 8000);
     if (state.settings.hints) setTimeout(() => vexSay(VEX_LINES.storm), 1500);
   });
+  bus.on('tide-warning', () => {
+    sfx.event();
+    toast('🌫️ <b>The Shroud stirs.</b> Tide forecast within two days — plan your lanes.', 'event', 7000);
+  });
   bus.on('world-event', (e) => {
-    const m = mooringById(state, e.mooring);
+    addPulse(e.mooring, e.kind === 'riot' ? '#ff6b76' : '#8fd18a');
     sfx.event();
     if (getTab() === 'market') renderPanel(state);
   });
   bus.on('artifact', (ar) => {
     sfx.artifact();
+    addPulse(state.player.mooring, '#4fd8c8');
     toast(`🏺 <b>${ar.name}</b> recovered!<br><span class="dim">${esc(ar.lore)}</span>`, 'event', 9000);
   });
   bus.on('salvage', (e) => { toast(`📡 Salvage complete: ${esc(e.out)}`, 'good', 6000); });
@@ -357,7 +395,12 @@ function bindKeyboard() {
       state.speed = speed;
       state.paused = false;
       syncSpeedUI(state);
-    }
+    } else if (e.key === 'm' || e.key === 'M') setTab('market');
+    else if (e.key === 'v' || e.key === 'V') setTab('ship');
+    else if (e.key === 'c' || e.key === 'C') setTab('contracts');
+    else if (e.key === 'f' || e.key === 'F') setTab('factions');
+    else if (e.key === 'x' || e.key === 'X') setTab('codex');
+    else if (e.key === 'l' || e.key === 'L') setTab('log');
   });
   document.addEventListener('pointerdown', () => initAudio(), { once: true });
 }

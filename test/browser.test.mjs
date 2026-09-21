@@ -49,10 +49,15 @@ ok(!window.document.getElementById('intro').classList.contains('hidden'), 'intro
 ok(G().state.paused === true, 'game paused during intro');
 
 section('intro skip');
-window.document.querySelector('#in-skip').click();
+window.document.querySelector('#in-next').click();
+window.document.querySelector('#in-next').click();
+ok(window.document.querySelector('#in-start'), 'final slide shows Begin button');
+ok(window.document.querySelector('#in-daily'), 'final slide offers Today\u2019s Reach (daily shared seed)');
+window.document.querySelector('#in-start').click(); // dismiss via Begin
 await sleep(150);
 ok(window.document.getElementById('intro').classList.contains('hidden'), 'intro dismissed');
 ok(G().state.paused === false, 'game running after intro');
+ok(window.document.getElementById('ticker'), 'world ticker present');
 
 section('HUD & market');
 await sleep(1000);

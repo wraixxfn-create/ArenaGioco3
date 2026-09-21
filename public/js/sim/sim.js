@@ -306,6 +306,12 @@ function politicsStep(state) {
 
 function shroudTide(state) {
   const day = dayOf(state.t);
+  // Forecast: the storm-wall telegraphs itself two days out.
+  if (day % 30 === 28 && day >= 28) {
+    addLog(state, 'tide', '🌫️ The Shroud stirs on the horizon. Tide expected within two days — wise captains plan their lanes.');
+    bus.emit('tide-warning', {});
+    return;
+  }
   if (day % 30 !== 0 || day < 2) return;
   const rng = tickRng(state);
   const chosen = [...state.edges].sort(() => rng() - 0.5).slice(0, 7);

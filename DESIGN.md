@@ -171,6 +171,17 @@ audio, responsive UI, prestige.
   same world (war profiteering ×1.5), with a live Codex leaderboard and news-line feats.
   Honest simulation, labeled as such — a competitive frame without fake multiplayer.
 
+**v1.2 (shipped) — the aliveness pass:**
+- **Juice:** floating profit/loss numbers at the HUD, market-row flashes on trade,
+  colored pulse rings on the map for wars/riots/booms/artifact finds.
+- **World ticker** — the latest ledger line narrates along the bottom of the map.
+- **Today's Reach** — a daily shared seed: every player on a given date generates the
+  identical world. A genuine async-social hook with zero backend (determinism pays off).
+- **Shroud forecasts** — tides telegraph 2 days ahead; planning beats surprise.
+- **Procedural music** — a 14-second-breath chord pad under the ambient drone, synthesized.
+- **Codex lore fragments** — three world-history fragments unlock at 3/8/15 charted ports.
+- **QoL:** tab hotkeys (M/V/C/F/X/L), pinch-zoom on touch, autosave blink.
+
 ## 15. Roadmap ahead
 
 **v1.2:** async multiplayer via seed-synced ghost markets + leaderboards; weekly Shroud event.

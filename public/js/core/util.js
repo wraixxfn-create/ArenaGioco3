@@ -80,3 +80,11 @@ export const SEASON_LEN_DAYS = 30;
 export function seasonOf(t) {
   return SEASONS[Math.floor((dayOf(t) - 1) / SEASON_LEN_DAYS) % SEASONS.length];
 }
+
+// "Today's Reach": everyone who plays on the same day shares one world.
+export function dailySeed(date = new Date()) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `daily-${y}-${m}-${d}`;
+}
