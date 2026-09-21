@@ -9,12 +9,13 @@ import { mooringById } from '../world/gen.js';
 import {
   priceOf, buyPrice, sellPrice, spreadFor, capacityOf, tankCapOf, maxHullOf,
   cargoCount, fuelCostOf, findRoute, netWorth, UPGRADES, scannerOf, bestArbitrage,
-  crewSlots, hasTrait, SHARE_CAP, sharePrice, shareDividend,
+  crewSlots, hasTrait, traitBonus, SHARE_CAP, sharePrice, shareDividend,
+  INSURANCE, isInsured, CREW_LEVEL_LEGS,
 } from '../sim/economy.js';
 import {
   buyGood, sellGood, refuel, repair, buyUpgrade, acquireLicense, travelTo,
   acceptContract, deliverContract, abandonContract, jettison, scanAnomaly,
-  buyShare, hireCrew, dismissCrew,
+  buyShare, hireCrew, dismissCrew, buyInsurance, cancelInsurance,
   LICENSE_COST, REP_FOR_LICENSE,
 } from '../player/actions.js';
 import { OFFICER_TRAITS } from '../data/names.js';
@@ -27,6 +28,7 @@ let api = null;
 let qtyMode = 5;
 let activeTab = 'market';
 let hintOpen = false;
+let marketFilter = 'all';
 
 export function initPanels(getStateFn, apiObj) {
   getState = getStateFn;
@@ -114,6 +116,9 @@ function onPanelClick(e) {
     case 'share': wrap(buyShare(state, el.dataset.mooring, el.dataset.good), () => sfx.coin()); break;
     case 'hire': wrap(hireCrew(state, el.dataset.id), () => sfx.upgrade()); break;
     case 'dismiss': wrap(dismissCrew(state, el.dataset.id)); break;
+    case 'insurance-buy': wrap(buyInsurance(state), () => sfx.event()); break;
+    case 'insurance-cancel': wrap(cancelInsurance(state)); break;
+    case 'filter': marketFilter = el.dataset.f; renderPanel(state); break;
     case 'arb': selectMooring(state, el.dataset.to); break;
     case 'close-card': state.ui.selected = null; hideMooringCard(); break;
     case 'tab-market': setTab('market'); break;
@@ -176,6 +181,7 @@ export function renderMooringCard(state) {
   const m = mooringById(state, sel);
   const p = state.player;
   const fac = FACTION_MAP[m.faction];
+  card.style.setProperty('--fac', fac.color);
   const here = p.mooring === sel && p.phase === 'dock';
   const route = sel !== p.mooring ? (state.ui.routePreview || findRoute(state, p.mooring, sel)) : null;
 
@@ -338,14 +344,20 @@ function renderMarket(state) {
   const qtyBtns = ['1', '5', '15', 'max'].map((q) =>
     `<button class="qty-btn ${String(qtyMode) === q ? 'on' : ''}" data-act="qty" data-q="${q}">${q === 'max' ? 'Max' : q}</button>`).join('');
 
-  const rows = Object.keys(m.target).map((g) => {
+  const isDen = m.faction === 'syndicate';
+  const allRows = Object.keys(m.target).map((g) => {
     const bp = buyPrice(m, g), sp = sellPrice(m, g);
     const hist = m.priceHist?.[g];
     const ratio = Math.min(1, (m.stock[g] || 0) / m.target[g]);
     const scarce = ratio < 0.35, glut = ratio > 1.3;
     const have = p.cargo[g] || 0;
     const locked = GOODS[g].restricted && !p.licenses[m.faction];
+    const denOk = locked && isDen; // the dens buy contraband, at 65%
     const produces = (m.prod[g] || 0) > 0, consumes = (m.cons[g] || 0) > 0;
+    const passes = marketFilter === 'all'
+      || (marketFilter === 'hold' && have > 0)
+      || (marketFilter === 'scarce' && scarce);
+    if (!passes) return '';
     return `<div class="mk-row" data-row="${g}" data-tip="${esc(GOODS[g].blurb)}">
       <div class="gicon">${GOODS[g].icon}</div>
       <div>
@@ -353,22 +365,25 @@ function renderMarket(state) {
         <div class="gmeta">
           ${produces ? '<span class="good">⚒ produces</span>' : ''}${consumes ? '<span>🏠 consumes</span>' : ''}
           <span class="${scarce ? 'bad' : glut ? 'good' : 'dim'}">${scarce ? 'scarce' : glut ? 'glut' : 'steady'}</span>
+          ${denOk ? '<span class="warn">🕳️ den buys at 65%</span>' : ''}
           ${hist ? spark(hist) : ''}
         </div>
       </div>
       <div class="gprice mono">
-        ${bp.toFixed(1)}
-        <small>sell ${sp.toFixed(1)}</small>
+        ${(denOk ? (bp * 0.65) : bp).toFixed(1)}
+        <small>sell ${(denOk ? sp * 0.65 : sp).toFixed(1)}</small>
       </div>
       <div class="gbtns">
         <button class="btn sm" data-act="buy" data-good="${g}" ${locked || p.credits < bp ? 'disabled' : ''}>Buy</button>
-        <button class="btn sm" data-act="sell" data-good="${g}" ${locked || have === 0 ? 'disabled' : ''}>Sell</button>
+        <button class="btn sm" data-act="sell" data-good="${g}" ${(locked && !denOk) || have === 0 ? 'disabled' : ''}>Sell</button>
       </div>
       <div class="bar stockbar" data-tip="Local stock vs. target. Low stock drives prices up; gluts crash them.">
         <i style="width:${Math.min(100, ratio * 66)}%;background:${scarce ? 'var(--bad)' : glut ? 'var(--good)' : 'var(--teal)'}"></i>
       </div>
     </div>`;
   }).join('');
+  const filterChips = ['all', 'hold', 'scarce'].map((f) =>
+    `<button class="fchip ${marketFilter === f ? 'on' : ''}" data-act="filter" data-f="${f}" data-tip="${f === 'hold' ? 'Only goods in your hold.' : f === 'scarce' ? 'Only goods this mooring desperately needs.' : 'Show every traded good.'}">${f === 'all' ? 'All' : f === 'hold' ? 'In hold' : 'Scarce'}</button>`).join('');
 
   const arbs = scannerOf(state) > 0 ? bestArbitrage(state) : [];
   const arbHtml = arbs.length ? `
@@ -414,8 +429,8 @@ function renderMarket(state) {
       <div><span class="chip"><span class="dot" style="background:${fac.color}"></span>${fac.short} market · ${Math.round(spreadFor(m) * 100)}% fee</span></div>
       <div class="mk-news">${m.news ? '📰 ' + esc(m.news) : ''}</div>
     </div>
-    <div class="qty-row"><span class="lbl">Quantity</span>${qtyBtns}</div>
-    ${rows}
+    <div class="qty-row"><span class="lbl">Quantity</span>${qtyBtns}<span style="flex:1"></span>${filterChips}</div>
+    ${allRows || '<div class="sub" style="padding:8px">Nothing matches this filter.</div>'}
     <div class="spread-line">Prices move with local stock. Big orders move the market — check the price after each trade.</div>
     ${investHtml}
     ${arbHtml}`;
@@ -491,13 +506,17 @@ function renderShip(state) {
   const wages = p.crew.reduce((s, c) => s + c.wage, 0);
   const hired = p.crew.map((c) => {
     const t = OFFICER_TRAITS[c.trait];
-    return `<div class="lic-row" data-tip="${esc(t.blurb)}">
+    const legs = c.legs || 0;
+    const xp = c.star ? 100 : Math.min(100, Math.round((legs / CREW_LEVEL_LEGS) * 100));
+    return `<div class="lic-row" data-tip="${esc(t.blurb)}${c.star ? ' ★ Veteran: effect improved by 50%.' : ` Legs sailed: ${legs}/${CREW_LEVEL_LEGS} to veteran.`}">
       <span>${t.icon}</span>
-      <span style="flex:1">${esc(c.name)} <span class="dim">· ${t.name}</span></span>
+      <span style="flex:1">${esc(c.name)} ${c.star ? '<span class="star">★</span>' : ''}<span class="dim"> · ${t.name}</span>
+        <span class="bar" style="display:block;margin-top:3px"><i style="width:${xp}%;background:${c.star ? 'gold' : 'var(--teal)'}"></i></span>
+      </span>
       <span class="dim">${c.wage} g/day</span>
       <button class="btn sm danger" data-act="dismiss" data-id="${c.id}" ${docked ? '' : 'disabled'}>Dismiss</button>
     </div>`;
-  }).join('') || '<div class="sub">No officers aboard. Crew change how the ship fights, sails, and trades.</div>';
+  }).join('') || '<div class="sub">No officers aboard. Crew change how the ship fights, sails, and trades — and grow sharper with every leg.</div>';
   const pool = (m.crewPool || []).map((c) => {
     const t = OFFICER_TRAITS[c.trait];
     const signing = c.wage * 5;
@@ -550,11 +569,25 @@ function renderShip(state) {
     <h2 class="sec">Crew <span class="dim" style="font-size:11px">(${p.crew.length}/${slots} berths${wages ? ` · ${wages} g/day wages` : ''})</span></h2>
     <div class="card">${hired}</div>
     ${pool ? `<div class="sub" style="margin-bottom:5px">Officers for hire at ${esc(m.name)}:</div><div class="card">${pool}</div>` : ''}
-    <div class="sub">Wages are paid at dawn. An unpaid crew does not stay long. Bigger cargo holds unlock more berths.</div>`;
+    <div class="sub">Wages are paid at dawn. An unpaid crew does not stay long. Bigger cargo holds unlock more berths.</div>
+
+    <h2 class="sec">Underwriters</h2>
+    ${isInsured(state)
+      ? `<div class="card glow" data-tip="While covered, a hull breach refunds ${Math.round(INSURANCE.cargoCover * 100)}% of lost cargo value and halves the towing fee.">
+          <div class="lic-row"><span>🛡️</span><span style="flex:1">Charter active — ${INSURANCE.premium} g/day premium</span>
+          <button class="btn sm danger" data-act="insurance-cancel">Cancel</button></div>
+        </div>`
+      : `<div class="card" data-tip="If your hull reaches zero, salvage tugs take a third of your cargo and a fat fee. Insurance softens the blow.">
+          <div class="lic-row"><span>🛡️</span>
+            <span style="flex:1">No cover. Shipwrecks cost ${Math.round(0.3 * 100)}% cargo + fees.</span>
+            <button class="btn sm" data-act="insurance-buy" ${docked && (m.shipyard || m.hq) && p.credits >= INSURANCE.fee ? '' : 'disabled'}>${fmtMoney(INSURANCE.fee)} + ${INSURANCE.premium} g/day</button>
+          </div>
+          ${!m.shipyard && !m.hq ? '<div class="sub" style="margin-top:5px">Underwriters work from shipyards and faction seats.</div>' : ''}
+        </div>`}`;
 }
 
 function repairCostOf(state) {
-  return Math.round((maxHullOf(state) - state.player.hull) * 2.2 * (hasTrait(state, 'bosun') ? 0.7 : 1));
+  return Math.round((maxHullOf(state) - state.player.hull) * 2.2 * (1 - traitBonus(state, 'bosun')));
 }
 
 function nearestShipyard(state) {
@@ -706,8 +739,8 @@ function renderCodex(state) {
   const s = p.stats;
   const statsHtml = [
     ['Trades made', s.trades], ['Trading margin', fmtMoney(s.profit)], ['Contracts delivered', s.delivered], ['Contracts failed', s.failed],
-    ['Blockade runs', s.blockades], ['Legs sailed', s.legs], ['Ports visited', s.visited.length], ['Storm legs', s.storms],
-    ['Artifacts recovered', s.artifacts], ['Anomalies scanned', s.scanned], ['Total earned', fmtMoney(s.earnedTotal)], ['Total spent', fmtMoney(s.spentTotal)],
+    ['Blockade runs', s.blockades], ['Contraband fenced', `${s.smuggled || 0} crates`], ['Legs sailed', s.legs], ['Ports visited', s.visited.length],
+    ['Storm legs', s.storms], ['Artifacts recovered', s.artifacts], ['Dividends collected', fmtMoney(s.dividends || 0)], ['Total earned', fmtMoney(s.earnedTotal)],
   ].map(([k, v]) => `<div><span>${k}</span><span>${typeof v === 'number' ? fmtInt(v) : v}</span></div>`).join('');
 
   // --- Portfolio & rivals --------------------------------------------------------

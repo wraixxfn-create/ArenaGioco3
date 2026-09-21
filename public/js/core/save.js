@@ -30,6 +30,9 @@ export function loadGame() {
     state.player.crew = state.player.crew || [];
     state.player.stats.dividends = state.player.stats.dividends || 0;
     state.player.stats.sharesBought = state.player.stats.sharesBought || 0;
+    state.player.stats.smuggled = state.player.stats.smuggled || 0;
+    state.player.insurance = !!state.player.insurance;
+    state.player.crew.forEach((c) => { c.legs = c.legs || 0; c.star = !!c.star; });
     state.rivals = state.rivals || [];
     return state;
   } catch (err) {

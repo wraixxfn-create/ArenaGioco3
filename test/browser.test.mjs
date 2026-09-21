@@ -163,6 +163,17 @@ G().setTab('ship');
 await sleep(80);
 ok(window.document.getElementById('p-ship').innerHTML.includes('The Emberwake'), 'ship panel shows vessel');
 ok(window.document.getElementById('p-ship').innerHTML.includes('Crew'), 'crew section rendered');
+ok(window.document.getElementById('p-ship').innerHTML.includes('Underwriters'), 'insurance section rendered');
+
+section('market filters');
+G().setTab('market');
+await sleep(60);
+ok(window.document.querySelectorAll('#p-market .fchip').length === 3, 'market filter chips rendered');
+window.document.querySelector('#p-market .fchip[data-f="scarce"]').click();
+await sleep(60);
+ok(true, 'scarce filter click handled without error');
+window.document.querySelector('#p-market .fchip[data-f="all"]').click();
+await sleep(60);
 
 section('persistence');
 G().saveNow();

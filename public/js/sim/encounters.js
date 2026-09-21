@@ -2,11 +2,11 @@
 // spawn odds are driven by the world (edge risk, storms, wars, scanner tier).
 
 import { bus } from '../core/bus.js';
-import { clamp, hashStr, mulberry32, rngInt, rngPick, rngChance, pickWeighted } from '../core/util.js';
+import { clamp, hashStr, mulberry32, rngInt, rngPick, rngChance, pickWeighted, seasonOf } from '../core/util.js';
 import { GOODS, GOOD_ORDER } from '../data/goods.js';
 import { FACTION_MAP } from '../data/factions.js';
 import { mooringById } from '../world/gen.js';
-import { isStormed, warOnEdge, scannerOf, tankCapOf, capacityOf, cargoCount, hasTrait } from './economy.js';
+import { isStormed, warOnEdge, scannerOf, tankCapOf, capacityOf, cargoCount, traitBonus } from './economy.js';
 
 export function loseCargoFraction(state, frac) {
   const p = state.player;
@@ -53,9 +53,9 @@ function encPirates(state, rng) {
         },
       },
       {
-        label: 'Outrun them', hint: `Engine check · ${(Math.round((0.45 + 0.09 * p.ship.engine) * 100))}% to escape`,
+        label: 'Outrun them', hint: `Engine check · ${(Math.round((0.45 + 0.09 * p.ship.engine + traitBonus(state, 'navigator') * 0.4) * 100))}% to escape`,
         resolve() {
-          if (rngChance(rng, 0.45 + 0.09 * p.ship.engine)) {
+          if (rngChance(rng, 0.45 + 0.09 * p.ship.engine + traitBonus(state, 'navigator') * 0.4)) {
             return { text: 'Your engines scream; the cutter falls behind cursing. Nothing lost but fuel pressure.' };
           }
           const lost = loseCargoFraction(state, 0.15);
@@ -63,9 +63,9 @@ function encPirates(state, rng) {
         },
       },
       {
-        label: 'Fight', hint: `Hull check · ${(Math.round(((0.35 + 0.09 * p.ship.hull + (hasTrait(state, 'gunner') ? 0.18 : 0)) * 100)))}% to win`,
+        label: 'Fight', hint: `Hull check · ${(Math.round(((0.35 + 0.09 * p.ship.hull + traitBonus(state, 'gunner')) * 100)))}% to win`,
         resolve() {
-          if (rngChance(rng, 0.35 + 0.09 * p.ship.hull + (hasTrait(state, 'gunner') ? 0.18 : 0))) {
+          if (rngChance(rng, 0.35 + 0.09 * p.ship.hull + traitBonus(state, 'gunner'))) {
             const loot = rngInt(rng, 120, 320);
             p.credits += loot;
             addRep(state, 'union', 2);
@@ -263,23 +263,96 @@ function encWisp(state, rng) {
 
 // --- Dispatcher ----------------------------------------------------------------
 
+function encRival(state, rng) {
+  const p = state.player;
+  const rival = state.rivals.length ? rngPick(rng, state.rivals) : null;
+  const name = rival ? rival.name : 'a captain flying no name';
+  const stake = Math.min(200, Math.round(p.credits * 0.15));
+  return {
+    icon: '⛵', title: 'A rival hails you',
+    text: `${name} falls into step half a cable off your beam. "Still afloat, then. Good. The lanes were dull without you." The rival's ship holds steady, easy, patient.`,
+    choices: [
+      {
+        label: `Wager ${stake} g on the next tide`, hint: 'A coin flip between captains',
+        resolve() {
+          if (p.credits < stake) return { text: 'You laugh it off — your purse makes the excuse for you.' };
+          if (rngChance(rng, 0.5)) {
+            p.credits += stake;
+            return { text: `${name} tosses a purse across the gap, cursing cheerfully. +${stake} g.` };
+          }
+          p.credits -= stake;
+          return { text: `${name} catches your purse one-handed. "Next tide," they promise. −${stake} g.` };
+        },
+      },
+      {
+        label: 'Trade rumors', hint: 'Rivals know things',
+        resolve() {
+          addRep(state, rngPick(rng, ['union', 'choir', 'verdant']), 1);
+          const m = rngPick(rng, state.moorings.filter((x) => x.id !== p.mooring));
+          return { text: `You swap lane-talk for a quarter hour. ${name} mentions shortages at ${m.name} before peeling away. (Someone remembers the courtesy.)` };
+        },
+      },
+      {
+        label: 'Wave and sail on', hint: 'No time for company',
+        resolve() { return { text: 'You trade salutes and keep your course. The rival\u2019s wake crosses yours once and fades.' }; },
+      },
+    ],
+  };
+}
+
+function encProcession(state, rng) {
+  const p = state.player;
+  return {
+    icon: '🕯️', title: 'A Choir procession',
+    text: 'A Tidebound Choir procession crosses the lane — three lantern-boats singing in slow harmony, candles guttering in the wind. They make room for you, unhurried.',
+    choices: [
+      {
+        label: 'Donate 100 g to the lanterns', hint: p.credits >= 100 ? 'The Choir remembers generosity' : 'Your purse disagrees',
+        resolve() {
+          if (p.credits < 100) return { text: 'You bow your head instead. The singers do not seem to mind.' };
+          p.credits -= 100;
+          addRep(state, 'choir', 4);
+          const fuel = Math.min(8, tankCapOf(state) - p.fuel);
+          p.fuel = Math.round((p.fuel + fuel) * 10) / 10;
+          return { text: `A lantern-blessing for your tanks: +${fuel} embers, gifted. Choir reputation +4.` };
+        },
+      },
+      {
+        label: 'Fall in and listen', hint: 'Free, and oddly calming',
+        resolve() {
+          addRep(state, 'choir', 1);
+          if (p.travel) p.travel.dur += 1;
+          return { text: 'You drift with the hymn for a while. It costs an hour and pays something harder to name. Choir reputation +1.' };
+        },
+      },
+      {
+        label: 'Pass respectfully', hint: 'The lane is long',
+        resolve() { return { text: 'You cross your lanterns in the old salute and pass. The singing follows you for a mile.' }; },
+      },
+    ],
+  };
+}
+
 const ENCOUNTER_DEFS = [
-  ['pirates', encPirates, 28],
-  ['customs', encCustoms, 20],
-  ['cache', encCache, 14],
-  ['distress', encDistress, 14],
-  ['tailwind', encTailwind, 12],
-  ['wisp', encWisp, 12],
+  ['pirates', encPirates, 26],
+  ['customs', encCustoms, 18],
+  ['cache', encCache, 13],
+  ['distress', encDistress, 13],
+  ['tailwind', encTailwind, 11],
+  ['wisp', encWisp, 11],
+  ['rival', encRival, 5],
+  ['procession', encProcession, 3],
 ];
 
 export function maybeEncounter(state, edge) {
   const rng = encRng(state);
-  const p = state.player;
+  const season = seasonOf(state.t);
   let prob = (edge.baseRisk / 100)
     * (isStormed(state, edge) ? 2 : 1)
     * (warOnEdge(state, edge) ? 1.8 : 1)
     * (1 - 0.08 * scannerOf(state))
-    * (hasTrait(state, 'lookout') ? 0.75 : 1);
+    * (1 - traitBonus(state, 'lookout'))
+    * (season === 'Stormveil' ? 1.15 : season === 'Brightcalm' ? 0.9 : 1);
   prob = clamp(prob, 0, 0.55);
   if (!rngChance(rng, prob)) return null;
   const [, fn] = pickWeighted(rng, ENCOUNTER_DEFS.map(([k, f, w]) => [[k, f], w]));

@@ -95,6 +95,9 @@ server-portable); **the UI never mutates state** (all verbs go through `player/a
 
 - **v1.1 ✅ shipped** — production shares (invest → dividends → reshape supply),
   crew officers with traits, rival captains leaderboard.
+- **v1.3 ✅ shipped** — floating-island map art, drawn airship, clouds & storm fog,
+  insurance underwriting, Syndicate dens (no-license contraband), crew veterans (★),
+  squall fronts, seasonal risk, rival & Choir encounters, market filters.
 - **v1.2 ✅ shipped** — the aliveness pass: floating numbers, map event pulses,
   world ticker, **Today's Reach** (daily shared seed — everyone playing today gets the
   same world), Shroud forecasts, procedural music, codex lore fragments, hotkeys,

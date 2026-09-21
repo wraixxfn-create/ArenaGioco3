@@ -91,6 +91,25 @@ export function crewSlots(state) {
   return 2 + (state.player.ship.cargo >= 2 ? 1 : 0) + (state.player.ship.cargo >= 4 ? 1 : 0);
 }
 
+export const CREW_LEVEL_LEGS = 20;
+
+// Trait bonuses, ×1.5 once an officer becomes a veteran (★).
+const TRAIT_BONUS = {
+  navigator: 0.12, purser: 0.04, gunner: 0.18, bosun: 0.30, lookout: 0.25, factor: 0.03,
+};
+export function traitBonus(state, traitId) {
+  const c = state.player.crew.find((x) => x.trait === traitId);
+  if (!c) return 0;
+  return TRAIT_BONUS[traitId] * (c.star ? 1.5 : 1);
+}
+
+// --- Insurance -----------------------------------------------------------------
+
+export const INSURANCE = { fee: 300, premium: 35, cargoCover: 0.7 };
+export const isInsured = (state) => !!state.player.insurance;
+
+// --- Shares ----------------------------------------------------------------------
+
 export const SHARE_CAP = 6;
 export function sharePrice(m, g) {
   return Math.round((m.prod[g] || 0) * GOODS[g].base * 1.15);

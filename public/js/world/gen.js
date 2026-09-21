@@ -240,10 +240,12 @@ export function generateWorld(seedStr, meta = {}) {
       trades: 0, profit: 0, profitWar: 0, legs: 0, docks: 0, delivered: 0, failed: 0,
       blockades: 0, visited: [START_MOORING], artifacts: 0, scanned: 0, storms: 0,
       earnedTotal: 0, spentTotal: 0, repBest: 0, dividends: 0, sharesBought: 0,
+      smuggled: 0,
     },
     flags: { tutorialBuy: false, tutorialSell: false, tutorialContract: false },
     crew: [],
     investments: {}, // mooringId -> { good, shares }
+    insurance: false,
   };
 
   const state = {

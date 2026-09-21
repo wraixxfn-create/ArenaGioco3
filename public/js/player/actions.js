@@ -9,7 +9,8 @@ import { mooringById, edgeBetween, generateWorld, computeTargets, START_MOORING 
 import {
   priceOf, buyPrice, sellPrice, spreadFor, capacityOf, tankCapOf, maxHullOf,
   cargoCount, fuelCostOf, findRoute, UPGRADES, netWorth,
-  hasTrait, crewSlots, SHARE_CAP, sharePrice, shareDividend,
+  hasTrait, traitBonus, crewSlots, SHARE_CAP, sharePrice, shareDividend,
+  INSURANCE, isInsured, CREW_LEVEL_LEGS,
 } from '../sim/economy.js';
 import { OFFICER_TRAITS } from '../data/names.js';
 import { depart, addLog } from '../sim/sim.js';
@@ -77,7 +78,7 @@ export function buyGood(state, good, qty) {
   if (qty <= 0) return { ok: false, reason: 'Not enough gilds.' };
 
   let cost = Math.round(price * qty * 100) / 100;
-  if (hasTrait(state, 'factor')) cost = Math.round(cost * 0.97 * 100) / 100; // the Factor haggles
+  cost = Math.round(cost * (1 - traitBonus(state, 'factor')) * 100) / 100; // the Factor haggles
   p.credits = Math.round((p.credits - cost) * 100) / 100;
   p.cargo[good] = (p.cargo[good] || 0) + qty;
   m.stock[good] = Math.max(0, m.stock[good] - qty);
@@ -96,8 +97,14 @@ export function sellGood(state, good, qty) {
   const m = mooringById(state, p.mooring);
   const price = sellPrice(m, good);
   if (price == null) return { ok: false, reason: 'Not traded here.' };
+  let denSale = false;
   if (GOODS[good].restricted && !p.licenses[m.faction]) {
-    return { ok: false, reason: `${GOODS[good].name} requires a ${FACTION_MAP[m.faction].short} trading license here.` };
+    // The Syndicate's dens buy contraband from anyone — at a price.
+    if (m.faction === 'syndicate') {
+      denSale = true;
+    } else {
+      return { ok: false, reason: `${GOODS[good].name} requires a ${FACTION_MAP[m.faction].short} trading license here.` };
+    }
   }
   qty = Math.min(qty, p.cargo[good] || 0);
   if (qty <= 0) return { ok: false, reason: 'Nothing to sell.' };
@@ -105,7 +112,8 @@ export function sellGood(state, good, qty) {
   // Profit accounting uses average cost if recorded, else base price.
   const avg = p.cargoCost?.[good] || GOODS[good].base;
   let revenue = Math.round(price * qty * 100) / 100;
-  if (hasTrait(state, 'purser')) revenue = Math.round(revenue * 1.04 * 100) / 100; // the Purser squeezes
+  if (denSale) revenue = Math.round(revenue * 0.65 * 100) / 100; // the den's cut
+  revenue = Math.round(revenue * (1 + traitBonus(state, 'purser')) * 100) / 100; // the Purser squeezes
   const profit = Math.round(revenue / qty - avg) * qty;
   p.credits = Math.round((p.credits + revenue) * 100) / 100;
   p.cargo[good] -= qty;
@@ -114,12 +122,16 @@ export function sellGood(state, good, qty) {
   p.stats.trades++;
   p.stats.profit += profit;
   p.stats.earnedTotal += revenue;
+  if (denSale) {
+    p.stats.smuggled = (p.stats.smuggled || 0) + qty;
+    if (Math.random() < 0.2) addLog(state, 'trade', `🕳️ A Syndicate broker moves your ${GOODS[good].name.toLowerCase()} through the dens. No questions asked.`);
+  }
   if (state.wars.some((w) => w.a === m.faction || w.b === m.faction)) p.stats.profitWar += Math.max(0, profit);
   if (!p.flags.tutorialSell) p.flags.tutorialSell = true;
   const tax = Math.round(revenue * spreadFor(m) * 100) / 100;
   const fstate = state.factions.find((f) => f.id === m.faction);
   if (fstate) fstate.treasury += tax;
-  addLog(state, 'trade', `⬇️ Sold ${qty} ${GOODS[good].name.toLowerCase()} @ ${price} g at ${m.name} (${fmtMoney(revenue)}, margin ${fmtMoney(profit)}).`);
+  addLog(state, 'trade', `⬇️ Sold ${qty} ${GOODS[good].name.toLowerCase()} @ ${denSale ? `${Math.round(price * 0.65)} (den)` : price} g at ${m.name} (${fmtMoney(revenue)}, margin ${fmtMoney(profit)}).`);
   bus.emit('trade', { good, qty, revenue, profit, dir: 'sell' });
   return { ok: true, qty, revenue, profit };
 }
@@ -174,10 +186,33 @@ export function hireCrew(state, candidateId) {
   const signing = c.wage * 5;
   if (p.credits < signing) return { ok: false, reason: `Signing-on fee is ${fmtMoney(signing)} (5 days' wage).` };
   p.credits -= signing;
-  p.crew.push({ id: c.id, name: c.name, trait: c.trait, wage: c.wage, hiredAt: state.t });
+  p.crew.push({ id: c.id, name: c.name, trait: c.trait, wage: c.wage, legs: 0, star: false, hiredAt: state.t });
   pool.splice(idx, 1);
   addLog(state, 'crew', `⚓ ${c.name} joins the crew as ${OFFICER_TRAITS[c.trait].name} (${c.wage} g/day).`);
   bus.emit('crew', {});
+  return { ok: true };
+}
+
+export function buyInsurance(state) {
+  if (!guardDocked(state)) return { ok: false, reason: 'Not while underway.' };
+  const p = state.player;
+  const m = mooringById(state, p.mooring);
+  if (!m.shipyard && !m.hq) return { ok: false, reason: 'Underwriters work from shipyards and faction seats.' };
+  if (p.insurance) return { ok: false, reason: 'Already covered.' };
+  if (p.credits < INSURANCE.fee) return { ok: false, reason: `The charter fee is ${fmtMoney(INSURANCE.fee)}.` };
+  p.credits -= INSURANCE.fee;
+  p.insurance = true;
+  addLog(state, 'trade', `🛡️ Underwriters' charter signed: ${INSURANCE.premium} g/day premium; 70% of cargo covered against total loss.`);
+  bus.emit('insurance', {});
+  return { ok: true };
+}
+
+export function cancelInsurance(state) {
+  const p = state.player;
+  if (!p.insurance) return { ok: false, reason: 'No policy to cancel.' };
+  p.insurance = false;
+  addLog(state, 'trade', '🛡️ Underwriters\' charter cancelled. The sky is yours alone again.');
+  bus.emit('insurance', {});
   return { ok: true };
 }
 
@@ -219,7 +254,7 @@ export function repair(state) {
   if (!m.shipyard) return { ok: false, reason: 'No shipyard at this mooring.' };
   const missing = maxHullOf(state) - p.hull;
   if (missing <= 0) return { ok: false, reason: 'Hull is sound.' };
-  const cost = Math.round(missing * 2.2 * (hasTrait(state, 'bosun') ? 0.7 : 1));
+  const cost = Math.round(missing * 2.2 * (1 - traitBonus(state, 'bosun')));
   if (p.credits < cost) return { ok: false, reason: `Repairs cost ${fmtMoney(cost)}.` };
   p.credits -= cost;
   p.hull = maxHullOf(state);
@@ -400,25 +435,34 @@ export function checkCatastrophe(state) {
   // Hull at zero: salvage rescue, never a hard game-over.
   const p = state.player;
   if (p.hull > 0) return null;
+  const insured = isInsured(state);
   const lost = [];
+  let lostValue = 0;
   for (const [g, n] of Object.entries(p.cargo)) {
     const take = Math.ceil(n * 0.3);
     p.cargo[g] = n - take;
     if (p.cargo[g] <= 0) delete p.cargo[g];
     lost.push(`${take} ${GOODS[g].name.toLowerCase()}`);
+    lostValue += take * GOODS[g].base;
   }
   p.hull = Math.round(maxHullOf(state) * 0.25);
   p.travel = null;
   p.phase = 'dock';
-  const fee = Math.round(p.credits * 0.1);
+  let fee = Math.round(p.credits * 0.1);
+  let payout = 0;
+  if (insured) {
+    payout = Math.round(lostValue * INSURANCE.cargoCover);
+    fee = Math.round(fee * 0.5); // underwriters argue with the tug guilds on your behalf
+    p.credits += payout;
+  }
   p.credits -= fee;
   const near = state.moorings
     .map((m) => ({ m, d: Math.hypot(m.x - (mooringById(state, p.mooring)?.x || 600), m.y - (mooringById(state, p.mooring)?.y || 400)) }))
     .sort((a, b) => a.d - b.d)[1]?.m || mooringById(state, START_MOORING);
   p.mooring = near.id;
-  addLog(state, 'damage', `💥 Hull breach! Salvage tugs tow you to ${near.name}. Lost ${lost.join(', ') || 'nothing'} and ${fmtMoney(fee)} in fees.`);
-  bus.emit('catastrophe', { near: near.id });
-  return { near: near.id, lost, fee };
+  addLog(state, 'damage', `💥 Hull breach! Salvage tugs tow you to ${near.name}. Lost ${lost.join(', ') || 'nothing'} and ${fmtMoney(fee)} in fees.${insured ? ` Underwriters paid ${fmtMoney(payout)}.` : ''}`);
+  bus.emit('catastrophe', { near: near.id, payout });
+  return { near: near.id, lost, fee, payout };
 }
 
 export function newGame(seed, meta = {}) {

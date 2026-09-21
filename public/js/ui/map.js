@@ -9,6 +9,7 @@ let canvas, ctx, getState, hooks;
 let view = { x: WORLD_W / 2, y: WORLD_H / 2, scale: 1 };
 let W = 0, H = 0, dpr = 1;
 let embers = [];
+let clouds = [];
 let trail = [];
 let pulses = []; // {mooringId, color, t0}
 let hover = null; // {kind:'mooring'|'anomaly', id}
@@ -19,6 +20,13 @@ let dashPhase = 0;
 export function addPulse(mooringId, color = '#ffd75e') {
   pulses.push({ mooringId, color, t0: performance.now() });
   if (pulses.length > 12) pulses.shift();
+}
+
+// Deterministic per-mooring variation (island shapes, bob phase).
+function mHash(id) {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+  return h;
 }
 
 export function initMap(opts) {
@@ -70,6 +78,17 @@ function seedEmbers() {
       vx: 0.08 + Math.random() * 0.22, vy: -(0.02 + Math.random() * 0.1),
       r: 0.6 + Math.random() * 1.7, a: 0.12 + Math.random() * 0.4,
       hue: Math.random() < 0.8 ? '232,180,90' : '79,216,200',
+    });
+  }
+  clouds = [];
+  for (let i = 0; i < 16; i++) {
+    clouds.push({
+      x: Math.random() * (WORLD_W + 400) - 200,
+      y: 60 + Math.random() * (WORLD_H - 120),
+      w: 90 + Math.random() * 180,
+      h: 22 + Math.random() * 34,
+      v: 0.05 + Math.random() * 0.12,
+      a: 0.035 + Math.random() * 0.055,
     });
   }
 }
@@ -224,14 +243,14 @@ function draw(now) {
   const state = getState();
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-  // Sky.
+  // Sky: deep indigo with drifting nebula light.
   const grad = ctx.createLinearGradient(0, 0, 0, H);
   grad.addColorStop(0, '#0a0f22');
   grad.addColorStop(0.55, '#070a14');
   grad.addColorStop(1, '#0b0d18');
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, W, H);
-
+  drawNebula(now);
   drawEmbers(now);
 
   ctx.save();
@@ -242,6 +261,7 @@ function draw(now) {
   drawTerritoryGlow(state);
   drawEdges(state, now);
   drawRoutePreview(state);
+  drawClouds(now);
   drawCaravans(state);
   drawAnomalies(state, now);
   drawMoorings(state, now);
@@ -249,6 +269,47 @@ function draw(now) {
   drawPlayer(state, now);
 
   ctx.restore();
+
+  drawVignette();
+}
+
+function drawNebula(now) {
+  const t = now / 9000;
+  const blobs = [
+    { x: W * (0.25 + 0.06 * Math.sin(t)), y: H * 0.3, r: W * 0.4, c: '76, 60, 130' },
+    { x: W * (0.75 + 0.05 * Math.cos(t * 0.8)), y: H * 0.7, r: W * 0.35, c: '34, 90, 96' },
+    { x: W * 0.5, y: H * (0.85 + 0.04 * Math.sin(t * 1.3)), r: W * 0.3, c: '110, 70, 40' },
+  ];
+  for (const b of blobs) {
+    const g = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, b.r);
+    g.addColorStop(0, `rgba(${b.c},0.10)`);
+    g.addColorStop(1, `rgba(${b.c},0)`);
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+  }
+}
+
+function drawVignette() {
+  const g = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.42, W / 2, H / 2, Math.max(W, H) * 0.75);
+  g.addColorStop(0, 'rgba(0,0,0,0)');
+  g.addColorStop(1, 'rgba(2,3,8,0.5)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, W, H);
+}
+
+function drawClouds(now) {
+  for (const c of clouds) {
+    c.x += c.v;
+    if (c.x - c.w > WORLD_W + 200) c.x = -c.w - 200;
+    ctx.fillStyle = `rgba(190, 200, 220, ${c.a})`;
+    for (let i = 0; i < 3; i++) {
+      const ox = (i - 1) * c.w * 0.35;
+      const oy = Math.sin(now / 4000 + c.x + i) * 3;
+      ctx.beginPath();
+      ctx.ellipse(c.x + ox, c.y + oy, c.w * (0.55 - Math.abs(i - 1) * 0.12), c.h, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
 }
 
 function drawEmbers(now) {
@@ -289,16 +350,29 @@ function drawEdges(state, now) {
     ctx.moveTo(A.x, A.y);
     ctx.lineTo(B.x, B.y);
     if (stormed) {
-      ctx.strokeStyle = 'rgba(178, 120, 255, 0.55)';
-      ctx.lineWidth = 3.4;
-      ctx.setLineDash([7, 9]);
-      ctx.lineDashOffset = -dashPhase * 0.6;
+      // Base lane under fog.
+      ctx.strokeStyle = 'rgba(150, 110, 220, 0.22)';
+      ctx.lineWidth = 1.4;
       ctx.stroke();
-      ctx.setLineDash([]);
-      // Storm haze.
-      ctx.strokeStyle = 'rgba(140, 90, 220, 0.12)';
-      ctx.lineWidth = 13;
-      ctx.stroke();
+      // Rolling fog blobs along the lane.
+      const len = Math.hypot(B.x - A.x, B.y - A.y);
+      const blobs = Math.max(3, Math.floor(len / 45));
+      for (let i = 0; i < blobs; i++) {
+        const f = ((i / blobs) + (now / 9000)) % 1;
+        const x = A.x + (B.x - A.x) * f;
+        const y = A.y + (B.y - A.y) * f + Math.sin(now / 500 + i * 2.2) * 4;
+        const r = 9 + 5 * Math.sin(now / 700 + i);
+        ctx.fillStyle = 'rgba(140, 95, 215, 0.13)';
+        ctx.beginPath();
+        ctx.arc(x, y, Math.max(4, r), 0, Math.PI * 2);
+        ctx.fill();
+      }
+      // Occasional flicker of stormlight.
+      if (Math.sin(now / 260 + e.len * 7) > 0.985) {
+        ctx.strokeStyle = 'rgba(220, 200, 255, 0.5)';
+        ctx.lineWidth = 1.2;
+        ctx.stroke();
+      }
     } else if (war) {
       ctx.strokeStyle = `rgba(255, 93, 108, ${0.35 + 0.15 * Math.sin(now / 300)})`;
       ctx.lineWidth = 2.4;
@@ -377,47 +451,40 @@ function drawMoorings(state, now) {
     const fac = FACTION_MAP[m.faction];
     const isSel = state.ui.selected === m.id;
     const isHome = p.mooring === m.id && p.phase === 'dock';
+    const h = mHash(m.id);
+    const bob = Math.sin(now / 1400 + (h % 100) / 10) * 1.6;
+    const x = m.x, y = m.y + bob;
+    const lit = m.visited;
+    const rioting = m.riotUntil > state.t;
 
     if (isHome) {
-      const g = ctx.createRadialGradient(m.x, m.y, 2, m.x, m.y, r * 3.2);
-      g.addColorStop(0, 'rgba(232,180,90,0.35)');
+      const g = ctx.createRadialGradient(x, y, 2, x, y, r * 3.6);
+      g.addColorStop(0, 'rgba(232,180,90,0.32)');
       g.addColorStop(1, 'rgba(232,180,90,0)');
       ctx.fillStyle = g;
-      ctx.beginPath(); ctx.arc(m.x, m.y, r * 3.2, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(x, y, r * 3.6, 0, Math.PI * 2); ctx.fill();
     }
 
-    // Body.
-    ctx.beginPath();
-    ctx.arc(m.x, m.y, r, 0, Math.PI * 2);
-    if (m.visited) {
-      ctx.fillStyle = m.riotUntil > state.t ? '#3a1c22' : '#1c2440';
-    } else {
-      ctx.fillStyle = '#10141f';
-    }
-    ctx.fill();
+    drawIsland(m, x, y, r, h, lit, rioting, fac, now);
 
-    // Faction ring.
+    // Faction ring around the island.
     ctx.beginPath();
-    ctx.arc(m.x, m.y, r, 0, Math.PI * 2);
-    ctx.strokeStyle = m.visited ? fac.color : 'rgba(160,154,140,0.25)';
-    ctx.lineWidth = m.hq ? 2.6 : 1.6;
+    ctx.arc(x, y, r + 2.5, 0, Math.PI * 2);
+    ctx.strokeStyle = lit ? fac.color + 'cc' : 'rgba(160,154,140,0.22)';
+    ctx.lineWidth = m.hq ? 2 : 1.3;
     ctx.stroke();
     if (m.hq) {
       ctx.beginPath();
-      ctx.arc(m.x, m.y, r + 3.4, 0, Math.PI * 2);
-      ctx.strokeStyle = fac.color + '88';
+      ctx.arc(x, y, r + 6, 0, Math.PI * 2);
+      ctx.strokeStyle = fac.color + '55';
       ctx.lineWidth = 1;
       ctx.stroke();
     }
-    // Shipyard mark.
-    if (m.shipyard && m.visited) {
-      ctx.fillStyle = '#e8b45a';
-      ctx.fillRect(m.x - 1.5, m.y - r - 5.5, 3, 3);
-    }
+
     // Selection ring.
     if (isSel) {
       ctx.beginPath();
-      ctx.arc(m.x, m.y, r + 6.5, 0, Math.PI * 2);
+      ctx.arc(x, y, r + 9, 0, Math.PI * 2);
       ctx.strokeStyle = 'rgba(232,180,90,0.9)';
       ctx.lineWidth = 1.4;
       ctx.setLineDash([5, 5]);
@@ -425,14 +492,117 @@ function drawMoorings(state, now) {
       ctx.stroke();
       ctx.setLineDash([]);
     }
+
     // Label.
     const known = m.visited || m.hq;
     if (showLabels && (known || isSel) && view.scale > (m.hq ? 0.35 : 0.5)) {
       ctx.font = `${m.hq ? '600 12px' : '11px'} system-ui, sans-serif`;
       ctx.textAlign = 'center';
-      ctx.fillStyle = known ? 'rgba(233,228,214,0.85)' : 'rgba(233,228,214,0.35)';
-      ctx.fillText(known ? m.name : '?', m.x, m.y + r + 13);
+      ctx.fillStyle = known ? 'rgba(233,228,214,0.88)' : 'rgba(233,228,214,0.35)';
+      ctx.fillText(known ? m.name : '?', x, y + r + 16);
+      if (lit && rioting) {
+        ctx.fillStyle = 'rgba(255,107,118,0.9)';
+        ctx.font = '9px system-ui, sans-serif';
+        ctx.fillText('riots', x, y + r + 26);
+      }
     }
+  }
+}
+
+// A mooring is a floating island: rock hull, deck, structures, pennant, anchor chain.
+function drawIsland(m, x, y, r, h, lit, rioting, fac, now) {
+  const rockW = r * 2.3, rockH = r * 1.15;
+
+  // Anchor chain + weight below.
+  ctx.strokeStyle = lit ? 'rgba(200,190,170,0.28)' : 'rgba(200,190,170,0.12)';
+  ctx.lineWidth = 0.8;
+  ctx.beginPath();
+  ctx.moveTo(x, y + rockH * 0.7);
+  ctx.lineTo(x + Math.sin(now / 2000 + h) * 1.2, y + rockH * 0.7 + r + 7);
+  ctx.stroke();
+  ctx.fillStyle = lit ? 'rgba(200,190,170,0.35)' : 'rgba(200,190,170,0.15)';
+  ctx.beginPath();
+  ctx.arc(x + Math.sin(now / 2000 + h) * 1.2, y + rockH * 0.7 + r + 8, 1.6, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Rock hull (jagged, seeded shape).
+  ctx.beginPath();
+  const pts = 9;
+  for (let i = 0; i <= pts; i++) {
+    const a = Math.PI * (i / pts); // lower half only
+    const jag = 0.82 + ((h >> (i % 24)) & 3) * 0.09;
+    const px = x - Math.cos(a) * rockW * jag * 0.5;
+    const py = y + Math.sin(a) * rockH * jag;
+    if (i === 0) ctx.moveTo(px, y); else ctx.lineTo(px, py);
+  }
+  ctx.closePath();
+  ctx.fillStyle = lit ? (rioting ? '#33202a' : '#232c4a') : '#12161f';
+  ctx.fill();
+  ctx.strokeStyle = lit ? 'rgba(232,180,90,0.18)' : 'rgba(160,154,140,0.12)';
+  ctx.lineWidth = 0.8;
+  ctx.stroke();
+
+  // Deck (top ellipse).
+  ctx.beginPath();
+  ctx.ellipse(x, y, rockW * 0.5, rockH * 0.34, 0, 0, Math.PI * 2);
+  ctx.fillStyle = lit ? (rioting ? '#402832' : '#2e3a60') : '#161b26';
+  ctx.fill();
+
+  // Structures: more population → more rooftops; HQ gets a spire.
+  if (lit) {
+    const n = Math.min(5, 1 + Math.floor(m.pop / 220));
+    for (let i = 0; i < n; i++) {
+      const bx = x + ((h >> (i * 3)) % 7 - 3) * r * 0.22;
+      const bh = 2.5 + ((h >> (i * 5)) % 4);
+      ctx.fillStyle = rioting ? '#57323d' : '#3f4d7a';
+      ctx.fillRect(bx - 1.3, y - rockH * 0.3 - bh, 2.6, bh);
+      // Window light.
+      ctx.fillStyle = rioting ? 'rgba(255,107,118,0.85)' : 'rgba(255, 216, 138, 0.8)';
+      ctx.fillRect(bx - 0.5, y - rockH * 0.3 - bh + 1, 1, 1);
+    }
+    if (m.hq) {
+      ctx.fillStyle = fac.color;
+      ctx.beginPath();
+      ctx.moveTo(x, y - rockH * 0.3 - 12);
+      ctx.lineTo(x - 2.4, y - rockH * 0.3);
+      ctx.lineTo(x + 2.4, y - rockH * 0.3);
+      ctx.closePath();
+      ctx.fill();
+    }
+    // Pennant flag.
+    ctx.strokeStyle = 'rgba(220,210,190,0.5)';
+    ctx.lineWidth = 0.7;
+    ctx.beginPath();
+    ctx.moveTo(x + rockW * 0.28, y - rockH * 0.25);
+    ctx.lineTo(x + rockW * 0.28, y - rockH * 0.25 - 7);
+    ctx.stroke();
+    ctx.fillStyle = fac.color;
+    const flutter = Math.sin(now / 300 + h) * 1.2;
+    ctx.beginPath();
+    ctx.moveTo(x + rockW * 0.28, y - rockH * 0.25 - 7);
+    ctx.lineTo(x + rockW * 0.28 + 5, y - rockH * 0.25 - 6 + flutter * 0.4);
+    ctx.lineTo(x + rockW * 0.28, y - rockH * 0.25 - 4.5);
+    ctx.closePath();
+    ctx.fill();
+    // Shipyard crane.
+    if (m.shipyard) {
+      ctx.strokeStyle = 'rgba(232,180,90,0.85)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(x - rockW * 0.34, y - rockH * 0.2);
+      ctx.lineTo(x - rockW * 0.34, y - rockH * 0.2 - 8);
+      ctx.lineTo(x - rockW * 0.34 + 5, y - rockH * 0.2 - 8);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(x - rockW * 0.34 + 4, y - rockH * 0.2 - 8);
+      ctx.lineTo(x - rockW * 0.34 + 4, y - rockH * 0.2 - 4);
+      ctx.stroke();
+    }
+  } else {
+    ctx.fillStyle = 'rgba(233,228,214,0.3)';
+    ctx.font = '9px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('?', x, y - rockH * 0.25);
   }
 }
 
@@ -486,16 +656,80 @@ function drawPlayer(state, now) {
   }
   if (trail.length > 40) trail.splice(0, trail.length - 40);
 
-  // Ship glyph.
+  drawAirship(x, y, ang, p.phase === 'travel', now);
+}
+
+// The Emberwake: gas envelope, gondola, fins — and a flame when she runs.
+function drawAirship(x, y, ang, underway, now) {
   ctx.save();
   ctx.translate(x, y);
   ctx.rotate(ang);
-  ctx.shadowColor = 'rgba(232,180,90,0.9)';
-  ctx.shadowBlur = 12;
-  ctx.fillStyle = '#ffd98a';
+
+  ctx.shadowColor = 'rgba(232,180,90,0.75)';
+  ctx.shadowBlur = 10;
+
+  // Envelope.
+  const eg = ctx.createLinearGradient(0, -4.5, 0, 2);
+  eg.addColorStop(0, '#f4d291');
+  eg.addColorStop(0.6, '#cf9d4e');
+  eg.addColorStop(1, '#8a6428');
+  ctx.fillStyle = eg;
   ctx.beginPath();
-  ctx.moveTo(7, 0); ctx.lineTo(-5, 4.4); ctx.lineTo(-2.5, 0); ctx.lineTo(-5, -4.4);
-  ctx.closePath();
+  ctx.ellipse(0, -2.2, 8.2, 3.4, 0, 0, Math.PI * 2);
   ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = 'rgba(60,40,10,0.5)';
+  ctx.lineWidth = 0.6;
+  ctx.beginPath();
+  ctx.ellipse(0, -2.2, 8.2, 3.4, 0, 0, Math.PI * 2);
+  ctx.stroke();
+  // Envelope seams.
+  ctx.beginPath();
+  ctx.moveTo(-8, -2.2); ctx.lineTo(8, -2.2);
+  ctx.strokeStyle = 'rgba(60,40,10,0.25)';
+  ctx.stroke();
+
+  // Fins.
+  ctx.fillStyle = '#b3843c';
+  ctx.beginPath();
+  ctx.moveTo(-8.2, -2.2); ctx.lineTo(-11.5, -4.6); ctx.lineTo(-9.5, -1.8);
+  ctx.closePath(); ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(-8.2, -2.2); ctx.lineTo(-11.5, 0.2); ctx.lineTo(-9.5, -2.4);
+  ctx.closePath(); ctx.fill();
+
+  // Rigging.
+  ctx.strokeStyle = 'rgba(220,210,190,0.55)';
+  ctx.lineWidth = 0.5;
+  ctx.beginPath();
+  ctx.moveTo(-3, 0.6); ctx.lineTo(-2, 2.6);
+  ctx.moveTo(3, 0.6); ctx.lineTo(2, 2.6);
+  ctx.stroke();
+
+  // Gondola.
+  ctx.fillStyle = '#5a4423';
+  ctx.beginPath();
+  ctx.moveTo(-3.6, 2.6); ctx.lineTo(4.2, 2.6); ctx.lineTo(3.2, 4.6); ctx.lineTo(-2.8, 4.6);
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle = 'rgba(255,216,138,0.95)';
+  ctx.fillRect(0.2, 3, 1.1, 1.1);
+  ctx.fillRect(-1.8, 3, 1.1, 1.1);
+
+  // Stern flame when underway.
+  if (underway) {
+    const flick = 0.7 + 0.5 * Math.abs(Math.sin(now / 60));
+    ctx.fillStyle = `rgba(255, 176, 64, ${0.75 * flick})`;
+    ctx.beginPath();
+    ctx.moveTo(-9.5, -2.2);
+    ctx.lineTo(-13 - flick * 3, -2.2 + Math.sin(now / 50) * 0.7);
+    ctx.lineTo(-9.5, -1.2);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = `rgba(255, 232, 180, ${0.7 * flick})`;
+    ctx.beginPath();
+    ctx.arc(-9.6, -2, 1, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
   ctx.restore();
 }

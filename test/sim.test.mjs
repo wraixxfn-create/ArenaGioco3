@@ -4,7 +4,7 @@
 import { generateWorld, START_MOORING } from '../public/js/world/gen.js';
 import { tickOnce, runOffline } from '../public/js/sim/sim.js';
 import { priceOf, buyPrice, sellPrice, findRoute, netWorth, capacityOf } from '../public/js/sim/economy.js';
-import { buyGood, sellGood, travelTo, acceptContract, deliverContract, refuel, buyShare, hireCrew, dismissCrew } from '../public/js/player/actions.js';
+import { buyGood, sellGood, travelTo, acceptContract, deliverContract, refuel, buyShare, hireCrew, dismissCrew, buyInsurance } from '../public/js/player/actions.js';
 import { refreshOffers } from '../public/js/sim/contracts.js';
 import { checkMilestones, checkAchievements } from '../public/js/sim/progress.js';
 import { GOOD_ORDER, GOODS as GOODS_MAP } from '../public/js/data/goods.js';
@@ -189,6 +189,66 @@ for (let i = 0; i < 30 && Math.floor(s5.t / 24) === Math.floor(t5 / 24); i++) ti
 tickOnce(s5); // cross into the new day
 ok(s5.player.stats.dividends > 0, `dividends paid (${s5.player.stats.dividends} g)`);
 ok(s5.rivals[0].worth > rivalBefore, 'rival captains grew richer');
+
+// --- v1.3: insurance, dens, crew veterans, squalls -------------------------------
+section('v1.3: insurance, dens, veterans, squalls');
+const s6 = generateWorld('v13');
+refreshOffers(s6);
+s6.player.credits = 20000;
+const ins = buyInsurance(s6);
+ok(ins.ok, `insurance at shipyard: ${ins.reason || ''}`);
+const creditsBeforePremium = s6.player.credits;
+let crossedDawn = false;
+for (let i = 0; i < 26 && !crossedDawn; i++) {
+  const d0 = Math.floor(s6.t / 24);
+  tickOnce(s6);
+  crossedDawn = Math.floor(s6.t / 24) > d0;
+}
+if (!crossedDawn) tickOnce(s6);
+ok(s6.player.insurance === true, 'policy still active');
+ok(s6.player.credits === creditsBeforePremium - 35, `premium deducted (${creditsBeforePremium} → ${s6.player.credits})`);
+
+// Den sale: fence relics at a Syndicate mooring without a license.
+const den = s6.moorings.find((m) => m.faction === 'syndicate');
+s6.player.phase = 'dock';
+s6.player.mooring = den.id;
+s6.player.cargo.relics = 4;
+const denSale = sellGood(s6, 'relics', 4);
+ok(denSale.ok, `den sale without license: ${denSale.reason || ''}`);
+ok(s6.player.stats.smuggled === 4, `smuggled stat (${s6.player.stats.smuggled})`);
+const notDen = s6.moorings.find((m) => m.faction !== 'syndicate' && m.target.relics != null);
+if (notDen) {
+  s6.player.mooring = notDen.id;
+  s6.player.cargo.relics = 2;
+  const blocked = sellGood(s6, 'relics', 2);
+  ok(!blocked.ok, 'relics still blocked outside dens without license');
+}
+
+// Crew veterans: 20 legs at sea earns the star.
+const s7 = generateWorld('vet');
+s7.player.credits = 20000;
+hireCrew(s7, s7.byId[START_MOORING].crewPool[0].id);
+const officer = s7.player.crew[0];
+ok(officer.legs === 0 && !officer.star, 'officer starts green');
+const nb7 = s7.edges.find((e) => e.a === START_MOORING || e.b === START_MOORING);
+const dest7 = nb7.a === START_MOORING ? nb7.b : nb7.a;
+for (let leg = 0; leg < 20 && !officer.star; leg++) {
+  s7.player.fuel = 80; // test fixture: keep the shuttle flying
+  travelTo(s7, leg % 2 === 0 ? dest7 : START_MOORING);
+  let guard = 0;
+  while (s7.player.phase === 'travel' && guard++ < 120) {
+    if (s7.pendingEncounter) { s7.pendingEncounter = null; s7.paused = false; }
+    tickOnce(s7);
+  }
+}
+ok(officer.star === true, `officer earned veteran star (legs=${officer.legs})`);
+
+// Squalls show up over a month of coarse sim.
+const s8 = generateWorld('squalls');
+refreshOffers(s8);
+for (let i = 0; i < 24 * 30; i++) tickOnce(s8, { coarse: true });
+const squalls = s8.log.filter((l) => l.text.includes('squall')).length;
+ok(squalls >= 1, `squall fronts occurred (${squalls} in 30 days)`);
 
 // --- Serializability -------------------------------------------------------------
 section('save round-trip');

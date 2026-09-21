@@ -182,6 +182,26 @@ audio, responsive UI, prestige.
 - **Codex lore fragments** — three world-history fragments unlock at 3/8/15 charted ports.
 - **QoL:** tab hotkeys (M/V/C/F/X/L), pinch-zoom on touch, autosave blink.
 
+**v1.3 (shipped) — the texture pass:**
+- **Visual overhaul:** moorings are now floating islands (seeded rock hulls, decks,
+  rooftop lights, HQ spires, pennants, shipyard cranes, anchor chains, bobbing), the
+  player flies a drawn airship (envelope, gondola, stern flame) with an ember trail,
+  parallax cloud banks drift across the Reach, nebula light moves in the sky, storm
+  lanes roll with animated fog + stormlight flickers, and a vignette frames the map.
+  Panels got ornament rules, faction-colored mooring cards, and an ember-lit intro.
+- **Underwriters' charter (insurance):** 300 g fee + 35 g/day premium; a hull breach
+  refunds 70% of lost cargo value and halves the towing fee. Unpaid premiums lapse.
+- **The Syndicate's dens:** fence contraband at any Syndicate mooring without a
+  license — at 65% value. Risk-free-ish profit for outlaws; licenses still matter.
+- **Crew veterans:** officers sail legs; at 20 legs they earn a ★ and their trait
+  bonus improves by 50%. Crew rows show XP bars.
+- **Squall fronts:** between tides, 1–2 random lanes storm for 2–4 days.
+- **Seasons bite:** Stormveil raises encounter risk (+15%), Brightcalm calms it (−10%).
+- **Two new encounters:** rival captains hail you (wagers, rumor-trading), and
+  Tidebound Choir processions cross your lane (donate for fuel + reputation).
+- **QoL:** market filter chips (All / In hold / Scarce); codex ledger tracks
+  contraband fenced and dividends; 4 new achievements.
+
 ## 15. Roadmap ahead
 
 **v1.2:** async multiplayer via seed-synced ghost markets + leaderboards; weekly Shroud event.

@@ -12,7 +12,8 @@ import { mooringById } from '../world/gen.js';
 import {
   UPGRADES, capacityOf, tankCapOf, maxHullOf, speedMultOf, scannerOf, cargoCount,
   priceOf, spreadFor, buyPrice, sellPrice, isStormed, warOnEdge, legHours, fuelCostOf,
-  findRoute, netWorth, knownMarkets, bestArbitrage, hasTrait, shareDividend,
+  findRoute, netWorth, knownMarkets, bestArbitrage, hasTrait, traitBonus, shareDividend,
+  INSURANCE, CREW_LEVEL_LEGS,
 } from './economy.js';
 import { refreshOffers, tickContracts } from './contracts.js';
 import { maybeEncounter } from './encounters.js';
@@ -56,6 +57,15 @@ function arriveAt(state, mooringId) {
     p.credits += 25; // cartographer's bounty for charting the Reach
     addLog(state, 'travel', `🗺️ Charted ${m.name}. The cartographers' guild pays a 25 g bounty.`);
     bus.emit('charted', { mooringId });
+  }
+  // Officers learn the lanes; veterans (★) improve further.
+  for (const c of p.crew) {
+    c.legs = (c.legs || 0) + 1;
+    if (!c.star && c.legs >= CREW_LEVEL_LEGS) {
+      c.star = true;
+      addLog(state, 'crew', `★ ${c.name} has become a veteran of the lanes — their skills sharpen.`);
+      bus.emit('crew-star', c);
+    }
   }
   p.stats.docks++;
   bus.emit('dock', { mooringId });
@@ -207,6 +217,15 @@ function dailyFinance(state, rng) {
       bus.emit('crew-desert', gone);
     }
   }
+  if (p.insurance) {
+    if (p.credits >= INSURANCE.premium) {
+      p.credits -= INSURANCE.premium;
+    } else {
+      p.insurance = false;
+      addLog(state, 'trade', '🛡️ Premium unpaid — the underwriters tear up your charter.');
+      bus.emit('insurance-lapsed', {});
+    }
+  }
 }
 
 // Rival captains live in the same world: they grow, profiteer, and make news.
@@ -280,6 +299,14 @@ function politicsStep(state) {
       addLog(state, 'peace', `🕊️ Treaty signed between ${FACTION_MAP[w.a].short} and ${FACTION_MAP[w.b].short}. Both treasuries bleed for peace.`);
       bus.emit('treaty', w);
     }
+  }
+  // Squalls: small, short storms on random lanes between tides.
+  if (rngChance(rng, 0.25)) {
+    const calm = state.edges.filter((e) => !(e.stormUntil > state.t));
+    const hits = shuffleEdges(rng, calm).slice(0, rngInt(rng, 1, 2));
+    for (const e of hits) e.stormUntil = state.t + rngInt(rng, 48, 96);
+    addLog(state, 'tide', `🌦️ A squall front rolls across ${hits.length} lane${hits.length > 1 ? 's' : ''}. It will pass in a few days.`);
+    bus.emit('squall', {});
   }
   for (const m of state.moorings) {
     if (m.stability < 30 && !(m.riotUntil > state.t) && rngChance(rng, 0.3)) {
@@ -384,6 +411,15 @@ export function resolveAnomaly(state, a) {
   }
   addLog(state, 'artifact', `🏺 ${out}`);
   bus.emit('salvage', { anomaly: a, out });
+}
+
+function shuffleEdges(rng, arr) {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
 }
 
 // --- The tick ------------------------------------------------------------------
