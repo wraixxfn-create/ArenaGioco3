@@ -103,16 +103,36 @@ ok(sellRes.ok, `sell ok: ${sellRes.reason || ''}`);
 const rf = refuel(s2, 20);
 ok(rf.ok || rf.reason, 'refuel returns result');
 
-// Contracts: accept + deliver a courier/passenger type if offered, else synthesize.
-if (!s2.contracts.offers.length) refreshOffers(s2);
-const offer = s2.contracts.offers[0];
-if (offer) {
-  const acc = acceptContract(s2, offer.id);
-  ok(acc.ok, `accept contract: ${acc.reason || ''}`);
-  if (acc.ok && offer.kind !== 'passenger' && offer.kind !== 'delivery' && offer.kind !== 'blockade') {
-    // Courier/relief are deliverable in principle; delivery flow tested below with relief.
+// Contracts: acceptance is location-bound. Chase the nearest offer like a real captain.
+s2.player.fuel = 120; // test fixture: full tanks for the chase
+let accepted = null;
+for (let attempt = 0; attempt < 8 && !accepted; attempt++) {
+  if (!s2.contracts.offers.length) refreshOffers(s2);
+  let offer = s2.contracts.offers.find((o) => !o.from || o.from === s2.player.mooring);
+  if (!offer && s2.contracts.offers.length) {
+    offer = s2.contracts.offers.slice().sort((a, b) => {
+      const ha = findRoute(s2, s2.player.mooring, a.from)?.hours ?? Infinity;
+      const hb = findRoute(s2, s2.player.mooring, b.from)?.hours ?? Infinity;
+      return ha - hb;
+    })[0];
+    const toFrom = travelTo(s2, offer.from);
+    if (!toFrom.ok) { tickOnce(s2); continue; }
+    let guard2 = 0;
+    while (s2.player.phase === 'travel' && guard2++ < 600) {
+      if (s2.pendingEncounter) { s2.pendingEncounter = null; s2.paused = false; }
+      tickOnce(s2);
+    }
+    continue; // offers may have refreshed en route — re-pick
+  }
+  if (offer) {
+    const acc = acceptContract(s2, offer.id);
+    if (acc.ok) accepted = offer;
+    else tickOnce(s2);
+  } else {
+    tickOnce(s2);
   }
 }
+ok(!!accepted, `a contract was accepted (${accepted?.kind || 'none'})`);
 
 // --- Offline catch-up ---------------------------------------------------------
 section('offline catch-up');

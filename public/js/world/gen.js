@@ -224,7 +224,7 @@ export function generateWorld(seedStr, meta = {}) {
 
   const state = {
     v: 3,
-    meta: { seed: String(seedStr), era: meta.era || 1, createdAt: Date.now(), legacyBonus: meta.legacyBonus || 0 },
+    meta: { seed: String(seedStr), era: meta.era || 1, createdAt: Date.now(), legacyBonus: meta.legacyBonus || 0, archive: meta.archive || [] },
     t: 8, // Day 1, 08:00 — a civilized hour to found a dynasty.
     paused: false,
     speed: 1,

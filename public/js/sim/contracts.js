@@ -1,6 +1,7 @@
 // Contract generation — authored by the world's live state, not by writers.
 // Deliveries chase real price gaps; blockade runs chase real wars.
 
+import { bus } from '../core/bus.js';
 import { hashStr, mulberry32, rngInt, rngPick, rngChance, uid, clamp } from '../core/util.js';
 import { GOOD_ORDER, GOODS } from '../data/goods.js';
 import { FACTION_MAP } from '../data/factions.js';
@@ -104,7 +105,8 @@ function makeBlockade(state, rng) {
   const other = side === war.a ? war.b : war.a;
   const targets = state.moorings.filter((m) => m.faction === side);
   const dest = rngPick(rng, targets);
-  const good = rngChance(rng, 0.5) ? 'armaments' : 'grain';
+  const hasAnyLicense = Object.values(state.player.licenses).some(Boolean);
+  const good = rngChance(rng, hasAnyLicense ? 0.5 : 0) ? 'armaments' : 'grain';
   const qty = good === 'grain' ? rngInt(rng, 14, 26) : rngInt(rng, 6, 12);
   const hours = travelHours(state, state.player.mooring, dest.id);
   if (hours === Infinity) return null;
@@ -154,6 +156,11 @@ export function refreshOffers(state) {
 export function tickContracts(state) {
   const dead = [];
   for (const c of state.contracts.active) {
+    if (state.t === c.deadline - 12 && !c.warned) {
+      c.warned = true;
+      addLog(state, 'contract', `⚠️ 12 hours left on: ${describe(c)}.`);
+      bus.emit('contract-warning', c);
+    }
     if (state.t > c.deadline) dead.push(c);
   }
   for (const c of dead) {

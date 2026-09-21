@@ -206,6 +206,9 @@ export function acceptContract(state, offerId) {
   if (idx === -1) return { ok: false, reason: 'Offer expired.' };
   if (state.contracts.active.length >= 3) return { ok: false, reason: 'Contract ledger is full (3 active).' };
   const offer = offers[idx];
+  if (offer.from && p.mooring !== offer.from) {
+    return { ok: false, reason: `This job is posted at ${mooringById(state, offer.from).name} — dock there to sign it.` };
+  }
   if (offer.kind === 'passenger' && capacityOf(state) - cargoCount(p) < 1) {
     return { ok: false, reason: 'No free berth for a passenger.' };
   }

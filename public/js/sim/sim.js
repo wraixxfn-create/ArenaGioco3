@@ -52,6 +52,9 @@ function arriveAt(state, mooringId) {
   if (!m.visited) {
     m.visited = true;
     p.stats.visited.push(mooringId);
+    p.credits += 25; // cartographer's bounty for charting the Reach
+    addLog(state, 'travel', `🗺️ Charted ${m.name}. The cartographers' guild pays a 25 g bounty.`);
+    bus.emit('charted', { mooringId });
   }
   p.stats.docks++;
   bus.emit('dock', { mooringId });

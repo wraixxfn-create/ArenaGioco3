@@ -1,7 +1,7 @@
 // EMBERWAKE — boot, main loop, and the glue between sim, UI, and audio.
 
 import { bus } from './core/bus.js';
-import { esc, fmtDate } from './core/util.js';
+import { esc } from './core/util.js';
 import { loadGame, saveGame } from './core/save.js';
 import { generateWorld, mooringById } from './world/gen.js';
 import { tickOnce, runOffline, TICK_MS } from './sim/sim.js';
@@ -154,6 +154,20 @@ function doTick() {
     lowFuelWarned = true;
     vexSay(VEX_LINES.lowFuel);
   }
+  // Relief work surfaces the moment a captain goes broke.
+  const p = state.player;
+  if (p.credits < 150 && cargoEmpty(p) && !state.contracts.active.length) {
+    if (!state.contracts.offers.some((o) => o.kind === 'relief')) refreshOffers(state);
+    if (!p.flags.vexBroke && state.settings.hints) {
+      p.flags.vexBroke = true;
+      vexSay(VEX_LINES.broke);
+    }
+    if (getTab() === 'contracts') renderPanel(state);
+  }
+}
+
+function cargoEmpty(p) {
+  return Object.values(p.cargo).reduce((a, b) => a + b, 0) + p.passengers.length === 0;
 }
 
 // --- Encounters -------------------------------------------------------------------
@@ -214,6 +228,8 @@ function wireBusEvents() {
     renderPanel(state);
   });
   bus.on('contract-deliver', (c) => { toast(`📦 Delivered: +${c.reward} g, ${FACTION_MAP[c.repFaction].short} rep +${c.repReward}.`, 'good'); });
+  bus.on('contract-warning', () => { sfx.alert(); toast('⏳ <b>Contract deadline:</b> 12 hours remain on a signed job.', 'bad', 6000); });
+  bus.on('charted', ({ mooringId }) => { toast(`🗺️ <b>${esc(mooringById(state, mooringId).name)}</b> charted. +25 g bounty.`, 'good', 4500); });
   bus.on('war', (w) => {
     sfx.war();
     toast(`⚔️ <b>War:</b> ${FACTION_MAP[w.a].name} vs ${FACTION_MAP[w.b].name}. Their lanes grow dangerous — and profitable.`, 'bad', 8000);

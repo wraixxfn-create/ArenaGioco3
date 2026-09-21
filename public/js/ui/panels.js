@@ -1,22 +1,21 @@
 // All DOM panels + HUD. Renders from state; user verbs go through data-act
 // delegation into player/actions. No state mutation happens here.
 
-import { bus } from '../core/bus.js';
 import { esc, fmtMoney, fmtInt, fmtDate, seasonOf, dayOf } from '../core/util.js';
-import { GOODS, GOOD_ORDER } from '../data/goods.js';
+import { GOODS } from '../data/goods.js';
 import { FACTIONS, FACTION_MAP, repTier, relKey } from '../data/factions.js';
 import { ARTIFACTS } from '../data/lore.js';
-import { mooringById, neighborsOf } from '../world/gen.js';
+import { mooringById } from '../world/gen.js';
 import {
   priceOf, buyPrice, sellPrice, spreadFor, capacityOf, tankCapOf, maxHullOf,
-  cargoCount, fuelCostOf, findRoute, netWorth, UPGRADES, scannerOf, knownMarkets, bestArbitrage,
+  cargoCount, fuelCostOf, findRoute, netWorth, UPGRADES, scannerOf, bestArbitrage,
 } from '../sim/economy.js';
 import {
   buyGood, sellGood, refuel, repair, buyUpgrade, acquireLicense, travelTo,
   acceptContract, deliverContract, abandonContract, jettison, scanAnomaly,
   LICENSE_COST, REP_FOR_LICENSE,
 } from '../player/actions.js';
-import { ACHIEVEMENTS, currentMilestone, isDynasty } from '../sim/progress.js';
+import { ACHIEVEMENTS, MILESTONES, currentMilestone, isDynasty } from '../sim/progress.js';
 import { toast } from './overlay.js';
 import { sfx } from '../audio/audio.js';
 
@@ -255,7 +254,7 @@ export function renderMilestoneWidget(state) {
   }
   el.classList.remove('hidden');
   el.innerHTML = `
-    <div class="mw-head">🧭 Milestone ${state.milestones.idx + 1}/${7}</div>
+    <div class="mw-head">🧭 Milestone ${state.milestones.idx + 1}/${MILESTONES.length}</div>
     <div class="mw-title">${esc(cur.title)}</div>
     <div class="mw-desc">${esc(cur.desc)}${cur.reward ? ` <span class="brass">+${cur.reward} g</span>` : ''}</div>
     <div class="mw-hint">${hintOpen ? `💡 ${esc(cur.hint)}` : '💡 need a hint?'}</div>`;
@@ -274,6 +273,7 @@ export function renderAll(state) {
   renderPanel(state);
   renderMooringCard(state);
   renderMilestoneWidget(state);
+  syncSpeedUI(state);
 }
 
 function updateTabBadges(state) {
@@ -520,8 +520,8 @@ function renderContracts(state) {
         <span>rep <b class="good">+${o.repReward}</b>${o.riskFaction ? ` <span class="bad">· ${FACTION_MAP[o.riskFaction].short} −3</span>` : ''}</span>
       </div>
       <div class="ct-actions">
-        <button class="btn sm primary" data-act="accept" data-id="${o.id}" ${canAccept ? '' : 'disabled'}>Sign contract</button>
-        ${o.kind === 'delivery' && o.from !== p.mooring ? `<span class="dim" style="font-size:11px">you must collect the cargo at ${esc(mooringById(state, o.from).name)} first</span>` : ''}
+        <button class="btn sm primary" data-act="accept" data-id="${o.id}" ${canAccept && (!o.from || o.from === p.mooring) ? '' : 'disabled'}>${o.from && o.from !== p.mooring ? 'Posted elsewhere' : 'Sign contract'}</button>
+        ${o.from && o.from !== p.mooring ? `<span class="dim" style="font-size:11px">posted at ${esc(mooringById(state, o.from).name)}${o.kind === 'delivery' ? ' — collect the cargo there' : ''}</span>` : ''}
       </div>
     </div>`;
   };
@@ -675,5 +675,3 @@ function renderLog(state) {
   el.innerHTML = `<h2 class="sec">World ledger</h2>` + state.log.slice(0, 70).map((l) =>
     `<div class="log-row ${l.type}"><span class="lt">D${dayOf(l.t)}</span><span>${esc(l.text)}</span></div>`).join('');
 }
-
-export { bus };

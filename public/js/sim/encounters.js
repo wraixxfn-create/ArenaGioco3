@@ -72,7 +72,7 @@ function encPirates(state, rng) {
             return { text: `Your plating holds and theirs doesn't. You salvage ${loot} g from the wreck. The Union approves (+2).` };
           }
           const dmg = rngInt(rng, 18, 30);
-          p.hull = Math.max(6, p.hull - dmg);
+          p.hull = Math.max(0, p.hull - dmg);
           const lost = loseCargoFraction(state, 0.08);
           return { text: `They rake your hull (${dmg} damage) before breaking off. ${lostText(lost)}` };
         },
@@ -249,7 +249,7 @@ function encWisp(state, rng) {
           }
           if (r < 0.8) return { text: 'Nothing but cold mist and the feeling of being counted. You sail on.' };
           const dmg = rngInt(rng, 6, 12);
-          p.hull = Math.max(6, p.hull - dmg);
+          p.hull = Math.max(0, p.hull - dmg);
           return { text: `Something in the mist leans on the hull like a hand testing fruit. ${dmg} damage before it loses interest.` };
         },
       },
@@ -281,8 +281,6 @@ export function maybeEncounter(state, edge) {
     * (1 - 0.08 * scannerOf(state));
   prob = clamp(prob, 0, 0.55);
   if (!rngChance(rng, prob)) return null;
-  const pick = pickWeighted(rng, ENCOUNTER_DEFS.map(([k, fn, w]) => [[k, fn], w]));
-  const [, fn] = pick;
-  void p;
+  const [, fn] = pickWeighted(rng, ENCOUNTER_DEFS.map(([k, f, w]) => [[k, f], w]));
   return fn(state, rng);
 }
