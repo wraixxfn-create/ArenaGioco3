@@ -81,6 +81,25 @@ export function findRoute(state, fromId, toId) {
   return { hours: distH.get(toId), path, edgeIds };
 }
 
+// --- Crew --------------------------------------------------------------------
+
+export function hasTrait(state, traitId) {
+  return state.player.crew.some((c) => c.trait === traitId);
+}
+
+export function crewSlots(state) {
+  return 2 + (state.player.ship.cargo >= 2 ? 1 : 0) + (state.player.ship.cargo >= 4 ? 1 : 0);
+}
+
+export const SHARE_CAP = 6;
+export function sharePrice(m, g) {
+  return Math.round((m.prod[g] || 0) * GOODS[g].base * 1.15);
+}
+export function shareDividend(state, m, g) {
+  const perShareDaily = (m.prod[g] || 0) / 10; // one share ≈ a tenth of daily output
+  return Math.round(perShareDaily * (sellPrice(m, g) || GOODS[g].base) * 0.2);
+}
+
 export function netWorth(state) {
   const p = state.player;
   const m = mooringById(state, p.mooring);

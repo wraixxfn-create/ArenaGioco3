@@ -4,7 +4,7 @@
 import { hashStr, mulberry32, rngInt, rngPick, rngChance, shuffle, dist } from '../core/util.js';
 import { GOODS, GOOD_ORDER } from '../data/goods.js';
 import { FACTIONS, FACTION_MAP, BASE_RELATIONS, relKey } from '../data/factions.js';
-import { genMooringName } from '../data/names.js';
+import { genMooringName, genOfficerName, OFFICER_TRAITS, RIVAL_NAME_POOL } from '../data/names.js';
 
 export const WORLD_W = 1200;
 export const WORLD_H = 820;
@@ -201,6 +201,28 @@ export function generateWorld(seedStr, meta = {}) {
   const yardCandidates = shuffle(rng, moorings.filter((m) => !m.shipyard && m.pop > 380)).slice(0, 3);
   yardCandidates.forEach((m) => { m.shipyard = true; });
 
+  // --- Officer pools at every shipyard & faction seat -----------------------
+  const traitIds = Object.keys(OFFICER_TRAITS);
+  for (const m of moorings) {
+    if (!m.shipyard && !m.hq) continue;
+    m.crewPool = [0, 1].map((i) => ({
+      id: `crew-${m.id}-${i}`,
+      name: genOfficerName(rng),
+      trait: traitIds[Math.floor(rng() * traitIds.length)],
+      wage: rngInt(rng, 18, 55),
+    }));
+  }
+
+  // --- Rival captains: named NPC competitors living in the same world -------
+  const rivalNames = shuffle(rng, RIVAL_NAME_POOL).slice(0, 3);
+  const rivals = rivalNames.map((name, i) => ({
+    id: `rival-${i}`,
+    name,
+    faction: FACTIONS[Math.floor(rng() * FACTIONS.length)].id,
+    worth: rngInt(rng, 3000, 9000),
+    aggression: 0.35 + rng() * 0.55,
+  }));
+
   // --- Player -------------------------------------------------------------
   const player = {
     mooring: START_MOORING,
@@ -217,9 +239,11 @@ export function generateWorld(seedStr, meta = {}) {
     stats: {
       trades: 0, profit: 0, profitWar: 0, legs: 0, docks: 0, delivered: 0, failed: 0,
       blockades: 0, visited: [START_MOORING], artifacts: 0, scanned: 0, storms: 0,
-      earnedTotal: 0, spentTotal: 0, repBest: 0,
+      earnedTotal: 0, spentTotal: 0, repBest: 0, dividends: 0, sharesBought: 0,
     },
     flags: { tutorialBuy: false, tutorialSell: false, tutorialContract: false },
+    crew: [],
+    investments: {}, // mooringId -> { good, shares }
   };
 
   const state = {
@@ -234,6 +258,7 @@ export function generateWorld(seedStr, meta = {}) {
     caravans: [],
     anomalies,
     player,
+    rivals,
     contracts: { offers: [], active: [], history: [], nextRefresh: 20 },
     fleet: [],
     log: [],

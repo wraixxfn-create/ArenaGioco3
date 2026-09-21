@@ -126,6 +126,11 @@ if (sellBtn) {
   ok(Object.keys(state.player.cargo).length === 0, 'no enabled sell button only if cargo empty');
 }
 
+section('codex rivals');
+G().setTab('codex');
+await sleep(60);
+ok(window.document.getElementById('p-codex').innerHTML.includes('Captains of the Reach'), 'rival leaderboard rendered');
+
 section('all tabs render');
 for (const tab of ['ship', 'contracts', 'factions', 'codex', 'log', 'market']) {
   G().setTab(tab);
@@ -152,6 +157,7 @@ section('ship services');
 G().setTab('ship');
 await sleep(80);
 ok(window.document.getElementById('p-ship').innerHTML.includes('The Emberwake'), 'ship panel shows vessel');
+ok(window.document.getElementById('p-ship').innerHTML.includes('Crew'), 'crew section rendered');
 
 section('persistence');
 G().saveNow();

@@ -151,14 +151,28 @@ No pay-to-win: the economy's integrity *is* the product.
 - Performance budgets: ≤40ms tick, ≤60 caravan objects drawn, no per-frame allocation in the
   render loop, rAF-only animation, panel re-render ≤1Hz unless user is interacting.
 
-## 14. MVP → full vision roadmap
+## 14. Shipped versions
 
-**MVP (this build, all real):** world gen, economy, NPC traffic, politics/wars, Shroud tides,
+**v1.0 (all real):** world gen, economy, NPC traffic, politics/wars, Shroud tides,
 travel+fuel, encounters, contracts (5 types), reputation+licenses, upgrades, scanner intel,
 anomalies+artifacts+codex, achievements, milestones/onboarding, offline catch-up, saves,
 audio, responsive UI, prestige.
 
-**v1.1:** mooring investments (buy production shares → reshape supply), warehouse ownership,
-crew officers with traits, faction HQ interiors, expanded artifact line.
+**v1.1 (shipped):**
+- **Production shares** — buy up to 6 shares of a mooring's production line (Friendly rep
+  required). Daily dividends track the live local sell price. *Systemic twist:* each share
+  expands that mooring's output +2%, deepening local gluts — investing can cannibalize your
+  own arbitrage margins, a real capital-allocation dilemma.
+- **Crew officers** — generated officers with 6 trait archetypes (Navigator −12% travel,
+  Purser +4% sells, Gunner +18% fights, Bosun −30% repairs, Lookout −25% encounters,
+  Factor −3% buys). Daily wages are a standing sink; unpaid officers desert. Berths gate
+  off cargo-hold progression.
+- **Rival captains** — three named NPC competitors whose net worth compounds daily in the
+  same world (war profiteering ×1.5), with a live Codex leaderboard and news-line feats.
+  Honest simulation, labeled as such — a competitive frame without fake multiplayer.
+
+## 15. Roadmap ahead
+
 **v1.2:** async multiplayer via seed-synced ghost markets + leaderboards; weekly Shroud event.
-**v2.0:** dynasty heirs & succession crisis mode; co-op convoy expeditions.
+**v2.0:** dynasty heirs & succession crisis mode; co-op convoy expeditions; warehouse
+ownership; faction HQ interiors; expanded artifact line.

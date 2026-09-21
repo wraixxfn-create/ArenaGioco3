@@ -61,8 +61,11 @@ node test/balance.probe.mjs      # economy probe: opening margins & war pacing a
 | Contracts | Deliveries / couriers / passengers / blockade runs / relief — generated from live world state |
 | Reputation | −100…+100 per faction, six tiers, gates licenses and prices |
 | Ship | 5 upgrade lines × 4 tiers, repairs, fuel tanks, scanner-gated market intel |
-| Discovery | Fog of memory, anomalies, 14 lore-bearing artifacts, codex, achievements |
-| Progression | 7-step milestone onboarding → licenses → wars → 200k dynasty → prestige Eras |
+| Investments | Production shares with live dividends — each share expands local supply (+2%), so capital allocation can undercut your own routes |
+| Crew | Generated officers, 6 trait archetypes that change travel/trade/combat math; daily wages, desertion when unpaid |
+| Rivals | Three named NPC captains compounding worth in the same world (war profiteers earn ×1.5) on a live leaderboard |
+| Discovery | Fog of memory, anomalies, 14 lore-bearing artifacts, codex, 16 achievements |
+| Progression | 7-step milestone onboarding → licenses → crew & shares → wars → 200k dynasty → prestige Eras |
 
 ## Architecture
 
@@ -90,11 +93,12 @@ server-portable); **the UI never mutates state** (all verbs go through `player/a
 
 ## Roadmap
 
-- **v1.1** — mooring investments (buy production shares, reshape supply), crew officers
-  with traits, warehouse ownership, expanded artifact line.
+- **v1.1 ✅ shipped** — production shares (invest → dividends → reshape supply),
+  crew officers with traits, rival captains leaderboard.
 - **v1.2** — async multiplayer on shared seeds: ghost captains (your price-influence
   appears in friends' worlds), per-seed leaderboards, weekly Shroud events.
-- **v2.0** — dynasty heirs & succession crises, co-op convoy expeditions.
+- **v2.0** — dynasty heirs & succession crises, co-op convoy expeditions, warehouse
+  ownership, faction HQ interiors.
 
 ## Business model (designed, not bolted on)
 

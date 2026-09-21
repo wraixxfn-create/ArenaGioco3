@@ -230,6 +230,7 @@ function wireBusEvents() {
   bus.on('contract-deliver', (c) => { toast(`📦 Delivered: +${c.reward} g, ${FACTION_MAP[c.repFaction].short} rep +${c.repReward}.`, 'good'); });
   bus.on('contract-warning', () => { sfx.alert(); toast('⏳ <b>Contract deadline:</b> 12 hours remain on a signed job.', 'bad', 6000); });
   bus.on('charted', ({ mooringId }) => { toast(`🗺️ <b>${esc(mooringById(state, mooringId).name)}</b> charted. +25 g bounty.`, 'good', 4500); });
+  bus.on('crew-desert', (gone) => { toast(`💸 Wages ran dry — <b>${esc(gone.name)}</b> deserted the crew.`, 'bad', 6000); });
   bus.on('war', (w) => {
     sfx.war();
     toast(`⚔️ <b>War:</b> ${FACTION_MAP[w.a].name} vs ${FACTION_MAP[w.b].name}. Their lanes grow dangerous — and profitable.`, 'bad', 8000);

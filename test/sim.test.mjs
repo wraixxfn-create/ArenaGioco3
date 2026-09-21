@@ -4,10 +4,10 @@
 import { generateWorld, START_MOORING } from '../public/js/world/gen.js';
 import { tickOnce, runOffline } from '../public/js/sim/sim.js';
 import { priceOf, buyPrice, sellPrice, findRoute, netWorth, capacityOf } from '../public/js/sim/economy.js';
-import { buyGood, sellGood, travelTo, acceptContract, deliverContract, refuel } from '../public/js/player/actions.js';
+import { buyGood, sellGood, travelTo, acceptContract, deliverContract, refuel, buyShare, hireCrew, dismissCrew } from '../public/js/player/actions.js';
 import { refreshOffers } from '../public/js/sim/contracts.js';
 import { checkMilestones, checkAchievements } from '../public/js/sim/progress.js';
-import { GOOD_ORDER } from '../public/js/data/goods.js';
+import { GOOD_ORDER, GOODS as GOODS_MAP } from '../public/js/data/goods.js';
 
 let failures = 0;
 const ok = (cond, msg) => {
@@ -153,6 +153,42 @@ buyGood(s4, tradeable[0], 3);
 checkMilestones(s4); checkAchievements(s4);
 ok(s4.achievements['first_sale'], 'first_sale achievement earned after a trade');
 ok(s4.milestones.idx >= 1, 'milestone 1 completed');
+
+// --- v1.1: crew, shares, rivals -----------------------------------------------------
+section('v1.1: crew, shares, rivals');
+const s5 = generateWorld('v11');
+refreshOffers(s5);
+ok(s5.rivals.length === 3, '3 rival captains generated');
+ok((s5.byId[START_MOORING].crewPool || []).length === 2, 'start mooring has an officer pool');
+
+s5.player.credits = 50000;
+const cand = s5.byId[START_MOORING].crewPool[0];
+const hireRes = hireCrew(s5, cand.id);
+ok(hireRes.ok, `hire officer: ${hireRes.reason || ''}`);
+ok(s5.player.crew.length === 1, 'officer aboard');
+ok(s5.byId[START_MOORING].crewPool.length === 1, 'candidate removed from pool');
+ok(dismissCrew(s5, s5.player.crew[0].id).ok, 'dismiss works');
+hireCrew(s5, s5.byId[START_MOORING].crewPool[0].id);
+
+// Shares: must be docked, friendly, and solvent. (Skip contraband producers.)
+const shareM = s5.moorings.find((m) => Object.entries(m.prod).some(([g, v]) => v >= 15 && !GOODS_MAP[g]?.restricted));
+const shareGood = Object.entries(shareM.prod).find(([g, v]) => v >= 15 && !GOODS_MAP[g]?.restricted)[0];
+s5.player.phase = 'dock';
+s5.player.mooring = shareM.id;
+const noRep = buyShare(s5, shareM.id, shareGood);
+ok(!noRep.ok, 'share purchase blocked without Friendly rep');
+s5.player.rep[shareM.faction] = 25;
+const sh = buyShare(s5, shareM.id, shareGood);
+ok(sh.ok, `buy share: ${sh.reason || ''}`);
+ok(s5.player.investments[shareM.id].shares === 1, 'share recorded');
+
+// Dawn: dividends pay, wages fall due, rivals grow.
+const rivalBefore = s5.rivals[0].worth;
+const t5 = s5.t;
+for (let i = 0; i < 30 && Math.floor(s5.t / 24) === Math.floor(t5 / 24); i++) tickOnce(s5);
+tickOnce(s5); // cross into the new day
+ok(s5.player.stats.dividends > 0, `dividends paid (${s5.player.stats.dividends} g)`);
+ok(s5.rivals[0].worth > rivalBefore, 'rival captains grew richer');
 
 // --- Serializability -------------------------------------------------------------
 section('save round-trip');

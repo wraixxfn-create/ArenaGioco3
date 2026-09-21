@@ -25,6 +25,12 @@ export function loadGame() {
     state.byId = Object.fromEntries(state.moorings.map((m) => [m.id, m]));
     state.pendingEncounter = null;
     state.ui = state.ui || { tab: 'market', selected: state.player.mooring };
+    // Forward-compat: fields introduced after a save was written.
+    state.player.investments = state.player.investments || {};
+    state.player.crew = state.player.crew || [];
+    state.player.stats.dividends = state.player.stats.dividends || 0;
+    state.player.stats.sharesBought = state.player.stats.sharesBought || 0;
+    state.rivals = state.rivals || [];
     return state;
   } catch (err) {
     console.warn('Load failed:', err);

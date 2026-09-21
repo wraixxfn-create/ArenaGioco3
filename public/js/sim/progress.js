@@ -69,6 +69,10 @@ export const ACHIEVEMENTS = [
   { id: 'tycoon', name: 'Merchant of the Reach', icon: '💰', desc: 'Reach a net worth of 75,000 g.', test: (s) => netWorth(s) >= 75000 },
   { id: 'shipwright', name: 'Proper Vessel', icon: '🛠️', desc: 'Fit the third tier of any system.', test: (s) => Object.values(s.player.ship).some((v) => v >= 3) },
   { id: 'eye_of_shroud', name: 'Eye of the Shroud', icon: '📡', desc: 'Fit the full Scanner Array (L3).', test: (s) => scannerOf(s) >= 3 },
+  { id: 'investor', name: 'Silent Partner', icon: '📈', desc: 'Buy 5 production shares across the Reach.', test: (s) => s.player.stats.sharesBought >= 5 },
+  { id: 'dividend', name: 'Passive Tide', icon: '🪙', desc: 'Collect 1,000 g in dividends.', test: (s) => s.player.stats.dividends >= 1000 },
+  { id: 'commodore', name: 'Commodore', icon: '⚓', desc: 'Keep 3 officers on the payroll at once.', test: (s) => s.player.crew.length >= 3 },
+  { id: 'first_among_equals', name: 'First Among Equals', icon: '🥇', desc: 'Out-worth every rival captain in the Reach.', test: (s) => s.rivals.length && netWorth(s) > Math.max(...s.rivals.map((r) => r.worth)) },
   { id: 'dynasty', name: 'Trade Dynasty', icon: '👑', desc: 'Found your dynasty: 200,000 g net worth, 3 licenses, and an Exalted patron.', test: (s) => isDynasty(s) },
 ];
 

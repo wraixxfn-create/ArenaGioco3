@@ -12,7 +12,7 @@ import { mooringById } from '../world/gen.js';
 import {
   UPGRADES, capacityOf, tankCapOf, maxHullOf, speedMultOf, scannerOf, cargoCount,
   priceOf, spreadFor, buyPrice, sellPrice, isStormed, warOnEdge, legHours, fuelCostOf,
-  findRoute, netWorth, knownMarkets, bestArbitrage,
+  findRoute, netWorth, knownMarkets, bestArbitrage, hasTrait, shareDividend,
 } from './economy.js';
 import { refreshOffers, tickContracts } from './contracts.js';
 import { maybeEncounter } from './encounters.js';
@@ -37,7 +37,8 @@ export function depart(state, fromId, edge) {
   const fuel = fuelCostOf(edge, p.ship.engine);
   if (p.fuel < fuel) return { ok: false, reason: 'Not enough embers for this leg.' };
   p.fuel = Math.round((p.fuel - fuel) * 10) / 10;
-  const dur = Math.max(2, Math.round(legHours(state, edge) / speedMultOf(state)));
+  const navBonus = hasTrait(state, 'navigator') ? 1.12 : 1;
+  const dur = Math.max(2, Math.round(legHours(state, edge) / (speedMultOf(state) * navBonus)));
   p.phase = 'travel';
   p.travel = { from: fromId, to, edgeId: edge.id, t: 0, dur, encounterAt: Math.max(1, Math.floor(dur / 2)), hadEncounter: false };
   return { ok: true };
@@ -182,8 +183,54 @@ const REL_BASES = {
   'union|concord': 15, 'union|verdant': 20, 'union|choir': 15, 'union|syndicate': -10,
 };
 
+// Daily finance: shareholders get paid, crews get paid (or they leave).
+function dailyFinance(state, rng) {
+  const p = state.player;
+  let dividends = 0;
+  for (const [mooringId, inv] of Object.entries(p.investments)) {
+    const m = mooringById(state, mooringId);
+    if (!m || !inv.shares) continue;
+    dividends += shareDividend(state, m, inv.good) * inv.shares;
+  }
+  if (dividends > 0) {
+    p.credits += dividends;
+    p.stats.dividends += dividends;
+    p.stats.earnedTotal += dividends;
+  }
+  const wages = p.crew.reduce((s, c) => s + c.wage, 0);
+  if (wages > 0) {
+    if (p.credits >= wages) {
+      p.credits -= wages;
+    } else if (p.crew.length) {
+      const gone = p.crew.splice(rngInt(rng, 0, p.crew.length - 1), 1)[0];
+      addLog(state, 'crew', `💸 Wages ran dry — ${gone.name} walks off the ship without a word.`);
+      bus.emit('crew-desert', gone);
+    }
+  }
+}
+
+// Rival captains live in the same world: they grow, profiteer, and make news.
+function stepRivals(state, rng) {
+  for (const r of state.rivals) {
+    const atWar = state.wars.some((w) => w.a === r.faction || w.b === r.faction);
+    const growth = (150 + r.aggression * 420) * (0.55 + rng() * 0.9) * (atWar ? 1.5 : 1);
+    r.worth = Math.round(r.worth + growth);
+    if (rngChance(rng, 0.06)) {
+      const feats = [
+        `${r.name} delivered a blockade run that bards will exaggerate.`,
+        `${r.name} bought out a spice caravan whole.`,
+        `${r.name} was seen refitting at ${rngPick(rng, state.moorings.filter((m) => m.shipyard)).name}.`,
+        `${r.name} lost a hold to pirates and laughed about it.`,
+      ];
+      addLog(state, 'rival', `⛵ ${rngPick(rng, feats)}`);
+    }
+  }
+}
+
 function politicsStep(state) {
   const rng = tickRng(state);
+  dailyFinance(state, rng);
+  stepRivals(state, rng);
   for (const f of state.factions) {
     const owned = state.moorings.filter((m) => m.faction === f.id);
     const income = owned.reduce((s, m) => s + m.pop * 0.04, 0) + f.tradeVolume * 0.02;

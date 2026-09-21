@@ -6,7 +6,7 @@ import { clamp, hashStr, mulberry32, rngInt, rngPick, rngChance, pickWeighted } 
 import { GOODS, GOOD_ORDER } from '../data/goods.js';
 import { FACTION_MAP } from '../data/factions.js';
 import { mooringById } from '../world/gen.js';
-import { isStormed, warOnEdge, scannerOf, tankCapOf, capacityOf, cargoCount } from './economy.js';
+import { isStormed, warOnEdge, scannerOf, tankCapOf, capacityOf, cargoCount, hasTrait } from './economy.js';
 
 export function loseCargoFraction(state, frac) {
   const p = state.player;
@@ -63,9 +63,9 @@ function encPirates(state, rng) {
         },
       },
       {
-        label: 'Fight', hint: `Hull check · ${(Math.round((0.35 + 0.09 * p.ship.hull) * 100))}% to win`,
+        label: 'Fight', hint: `Hull check · ${(Math.round(((0.35 + 0.09 * p.ship.hull + (hasTrait(state, 'gunner') ? 0.18 : 0)) * 100)))}% to win`,
         resolve() {
-          if (rngChance(rng, 0.35 + 0.09 * p.ship.hull)) {
+          if (rngChance(rng, 0.35 + 0.09 * p.ship.hull + (hasTrait(state, 'gunner') ? 0.18 : 0))) {
             const loot = rngInt(rng, 120, 320);
             p.credits += loot;
             addRep(state, 'union', 2);
@@ -278,7 +278,8 @@ export function maybeEncounter(state, edge) {
   let prob = (edge.baseRisk / 100)
     * (isStormed(state, edge) ? 2 : 1)
     * (warOnEdge(state, edge) ? 1.8 : 1)
-    * (1 - 0.08 * scannerOf(state));
+    * (1 - 0.08 * scannerOf(state))
+    * (hasTrait(state, 'lookout') ? 0.75 : 1);
   prob = clamp(prob, 0, 0.55);
   if (!rngChance(rng, prob)) return null;
   const [, fn] = pickWeighted(rng, ENCOUNTER_DEFS.map(([k, f, w]) => [[k, f], w]));

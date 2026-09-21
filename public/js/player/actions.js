@@ -5,11 +5,13 @@ import { bus } from '../core/bus.js';
 import { clamp, fmtMoney, uid } from '../core/util.js';
 import { GOODS } from '../data/goods.js';
 import { FACTION_MAP } from '../data/factions.js';
-import { mooringById, edgeBetween, generateWorld, START_MOORING } from '../world/gen.js';
+import { mooringById, edgeBetween, generateWorld, computeTargets, START_MOORING } from '../world/gen.js';
 import {
   priceOf, buyPrice, sellPrice, spreadFor, capacityOf, tankCapOf, maxHullOf,
   cargoCount, fuelCostOf, findRoute, UPGRADES, netWorth,
+  hasTrait, crewSlots, SHARE_CAP, sharePrice, shareDividend,
 } from '../sim/economy.js';
+import { OFFICER_TRAITS } from '../data/names.js';
 import { depart, addLog } from '../sim/sim.js';
 import { describe } from '../sim/contracts.js';
 
@@ -74,7 +76,8 @@ export function buyGood(state, good, qty) {
   qty = Math.min(qty, maxAfford);
   if (qty <= 0) return { ok: false, reason: 'Not enough gilds.' };
 
-  const cost = Math.round(price * qty * 100) / 100;
+  let cost = Math.round(price * qty * 100) / 100;
+  if (hasTrait(state, 'factor')) cost = Math.round(cost * 0.97 * 100) / 100; // the Factor haggles
   p.credits = Math.round((p.credits - cost) * 100) / 100;
   p.cargo[good] = (p.cargo[good] || 0) + qty;
   m.stock[good] = Math.max(0, m.stock[good] - qty);
@@ -101,8 +104,9 @@ export function sellGood(state, good, qty) {
 
   // Profit accounting uses average cost if recorded, else base price.
   const avg = p.cargoCost?.[good] || GOODS[good].base;
-  const revenue = Math.round(price * qty * 100) / 100;
-  const profit = Math.round((price - avg) * qty);
+  let revenue = Math.round(price * qty * 100) / 100;
+  if (hasTrait(state, 'purser')) revenue = Math.round(revenue * 1.04 * 100) / 100; // the Purser squeezes
+  const profit = Math.round(revenue / qty - avg) * qty;
   p.credits = Math.round((p.credits + revenue) * 100) / 100;
   p.cargo[good] -= qty;
   if (p.cargo[good] <= 0) { delete p.cargo[good]; if (p.cargoCost) delete p.cargoCost[good]; }
@@ -126,6 +130,66 @@ export function noteCargoCost(state, good, qty, unitCost) {
   const have = state.player.cargo[good] || 0;
   const prevAvg = state.player.cargoCost[good] || unitCost;
   state.player.cargoCost[good] = have > 0 ? (prevAvg * (have - qty) + unitCost * qty) / have : unitCost;
+}
+
+// --- Investing & crew ---------------------------------------------------------
+
+export function buyShare(state, mooringId, good) {
+  if (!guardDocked(state)) return { ok: false, reason: 'Not while underway.' };
+  const p = state.player;
+  if (p.mooring !== mooringId) return { ok: false, reason: 'You must be docked at the mooring.' };
+  const m = mooringById(state, mooringId);
+  if (GOODS[good]?.restricted) return { ok: false, reason: 'No honest shares in contraband production.' };
+  if (!(m.prod[good] > 0)) return { ok: false, reason: 'This mooring produces no such good.' };
+  if ((p.rep[m.faction] || 0) < 20) return { ok: false, reason: `Requires Friendly standing (+20 rep) with the ${FACTION_MAP[m.faction].short}.` };
+  const inv = p.investments[mooringId] || { good, shares: 0 };
+  if (inv.good !== good) return { ok: false, reason: 'Shares here are tied to another production line.' };
+  if (inv.shares >= SHARE_CAP) return { ok: false, reason: 'You already hold a controlling stake.' };
+  const price = sharePrice(m, good);
+  if (p.credits < price) return { ok: false, reason: `A share costs ${fmtMoney(price)}.` };
+  p.credits -= price;
+  inv.shares++;
+  p.investments[mooringId] = inv;
+  p.stats.sharesBought++;
+  p.stats.spentTotal += price;
+  // Investment physically expands output: +2% per share. The world notices.
+  m.prod[good] = Math.round(m.prod[good] * 1.02 * 10) / 10;
+  computeTargets(m);
+  addLog(state, 'invest', `📈 You bought a share of ${GOODS[good].name.toLowerCase()} production at ${m.name} (${fmtMoney(price)}). Output grows.`);
+  bus.emit('invest', { mooringId, good, shares: inv.shares });
+  return { ok: true, shares: inv.shares };
+}
+
+export function hireCrew(state, candidateId) {
+  if (!guardDocked(state)) return { ok: false, reason: 'Not while underway.' };
+  const p = state.player;
+  const m = mooringById(state, p.mooring);
+  const pool = m.crewPool || [];
+  const idx = pool.findIndex((c) => c.id === candidateId);
+  if (idx === -1) return { ok: false, reason: 'No such officer here.' };
+  if (p.crew.length >= crewSlots(state)) {
+    return { ok: false, reason: `No free berths (${p.crew.length}/${crewSlots(state)}). Bigger holds unlock more.` };
+  }
+  const c = pool[idx];
+  const signing = c.wage * 5;
+  if (p.credits < signing) return { ok: false, reason: `Signing-on fee is ${fmtMoney(signing)} (5 days' wage).` };
+  p.credits -= signing;
+  p.crew.push({ id: c.id, name: c.name, trait: c.trait, wage: c.wage, hiredAt: state.t });
+  pool.splice(idx, 1);
+  addLog(state, 'crew', `⚓ ${c.name} joins the crew as ${OFFICER_TRAITS[c.trait].name} (${c.wage} g/day).`);
+  bus.emit('crew', {});
+  return { ok: true };
+}
+
+export function dismissCrew(state, crewId) {
+  if (!guardDocked(state)) return { ok: false, reason: 'Not while underway.' };
+  const p = state.player;
+  const idx = p.crew.findIndex((c) => c.id === crewId);
+  if (idx === -1) return { ok: false, reason: 'No such crew member.' };
+  const [c] = p.crew.splice(idx, 1);
+  addLog(state, 'crew', `👋 ${c.name} leaves the crew at ${mooringById(state, p.mooring).name}.`);
+  bus.emit('crew', {});
+  return { ok: true };
 }
 
 // --- Services ---------------------------------------------------------------
@@ -155,7 +219,7 @@ export function repair(state) {
   if (!m.shipyard) return { ok: false, reason: 'No shipyard at this mooring.' };
   const missing = maxHullOf(state) - p.hull;
   if (missing <= 0) return { ok: false, reason: 'Hull is sound.' };
-  const cost = Math.round(missing * 2.2);
+  const cost = Math.round(missing * 2.2 * (hasTrait(state, 'bosun') ? 0.7 : 1));
   if (p.credits < cost) return { ok: false, reason: `Repairs cost ${fmtMoney(cost)}.` };
   p.credits -= cost;
   p.hull = maxHullOf(state);
