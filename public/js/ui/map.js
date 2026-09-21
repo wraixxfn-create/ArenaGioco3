@@ -368,7 +368,7 @@ function drawEdges(state, now) {
         ctx.fill();
       }
       // Occasional flicker of stormlight.
-      if (Math.sin(now / 260 + e.len * 7) > 0.985) {
+      if (Math.sin(now / 260 + mHash(e.id) * 6.283) > 0.985) {
         ctx.strokeStyle = 'rgba(220, 200, 255, 0.5)';
         ctx.lineWidth = 1.2;
         ctx.stroke();
