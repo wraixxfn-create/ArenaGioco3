@@ -181,7 +181,11 @@ function moveCaravans(state) {
     const B = mooringById(state, cv.b);
     const edge = state.edges.find((e) => e.id === cv.edgeId);
     let qty = cv.qty;
-    if (edge && isStormed(state, edge) && Math.random() < 0.12) qty = Math.floor(qty * 0.5);
+    if (edge && isStormed(state, edge)) {
+      // Deterministic storm-loss roll seeded from the caravan's own journey data.
+      const roll = mulberry32((hashStr(cv.a + '|' + cv.b + '|' + cv.good) ^ Math.imul(cv.tArrive, 2654435761)) >>> 0)();
+      if (roll < 0.12) qty = Math.floor(qty * 0.5);
+    }
     B.stock[cv.good] = Math.min((B.stock[cv.good] || 0) + qty, B.target[cv.good] * 2.2);
   }
 }
